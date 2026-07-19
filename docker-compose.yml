@@ -17,10 +17,14 @@ services:
       POSTGRES_PASSWORD: jobportal
       POSTGRES_DB: jobportal
     ports:
-      # Exposed so the test suite and a locally-run uvicorn can reach it.
-      # Once the backend is containerised it talks over the Docker network
-      # instead, on the internal hostname `db`.
-      - "5432:5432"
+      # Bound to loopback and overridable, because a developer machine very
+      # often already has Postgres on 5432 — and an "address already in use"
+      # there kills `docker compose up` before anything starts. Set
+      # POSTGRES_PORT to move it.
+      #
+      # Published at all only so the test suite and a host-run uvicorn can
+      # reach it; the containers talk over the compose network on `db`.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Provisions the separate test database on first boot. Read-only because
@@ -58,7 +62,8 @@ services:
       ENVIRONMENT: ${ENVIRONMENT:-development}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
     ports:
-      - "8000:8000"
+      # Overridable for the same reason as the database port.
+      - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       db:
         # Health-gated rather than `depends_on: [db]`, which waits only for the
@@ -81,7 +86,7 @@ services:
     ports:
       # 5173 on the host is the UI address the README quotes; 8080 inside is
       # what the unprivileged nginx image can bind as a non-root user.
-      - "5173:8080"
+      - "${FRONTEND_PORT:-5173}:8080"
     depends_on:
       backend:
         # nginx proxies to the backend, so starting before it is up would serve

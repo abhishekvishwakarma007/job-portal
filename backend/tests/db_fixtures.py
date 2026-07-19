@@ -115,9 +115,15 @@ def db_engine() -> Iterator[Engine]:
         with engine.connect() as connection:
             connection.close()
     except Exception as exc:  # pragma: no cover - environment guard
-        pytest.skip(
-            f"No test database reachable at {url} ({exc.__class__.__name__}). "
-            "Start it with: docker compose up -d db"
+        # Fail, not skip. Skipping means most of the suite silently disappears
+        # and `pytest -q` still prints a row of dots — a green run that proved
+        # nothing. Someone following the README without starting the database
+        # should be told, not congratulated.
+        pytest.fail(
+            f"No test database reachable at {url} "
+            f"({exc.__class__.__name__}). "
+            "Start it first:  docker compose up -d db",
+            pytrace=False,
         )
 
     # Serialise against any other pytest process on this database before

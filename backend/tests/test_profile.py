@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.models.profile import CandidateProfile
 from app.models.user import User, UserRole
 from app.schemas.profile import ProfileUpdate
+from app.services import profile as profile_service
 from app.services.auth import register_user
 from app.services.profile import get_or_create_profile, update_profile
 
@@ -73,28 +74,62 @@ def test_one_profile_per_candidate_is_enforced_by_the_database(
 
 
 def test_losing_the_create_race_returns_the_existing_profile(
-    db_session: Session, candidate: User
+    db_session: Session, candidate: User, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A concurrent first-read must not 500.
+    """The service must survive losing the create race, not 500.
 
     Two requests arriving together — a page load and its first save, or a
-    double-click — can both find no profile and both insert. The constraint
-    refuses the second; the service catches that and re-reads, so the user sees
-    their profile rather than a server error.
+    double-click — both find no profile and both insert. The constraint refuses
+    the second; the service has to catch that and re-read.
 
-    Simulated by inserting the row behind the service's back, which puts it in
-    exactly the position the loser of the race is in.
+    The lookup is stubbed to miss exactly once, which is what puts this in the
+    loser's position: the row exists, the SELECT does not see it, so the insert
+    is attempted and the IntegrityError path is genuinely taken.
+
+    An earlier version of this test committed the row and then called the
+    service, so the plain SELECT found it and the recovery path never ran. It
+    passed against the unfixed code, which is the one thing a regression test
+    must not do.
     """
-    db_session.add(
-        CandidateProfile(user_id=candidate.id, headline="Written by the winner")
-    )
+    winner = CandidateProfile(user_id=candidate.id, headline="Written by the winner")
+    db_session.add(winner)
     db_session.commit()
-    db_session.expunge_all()
+
+    real_find = profile_service._find_profile
+    calls = {"count": 0}
+
+    def find_missing_once(db: Session, *, user: User) -> CandidateProfile | None:
+        calls["count"] += 1
+        if calls["count"] == 1:
+            return None
+        return real_find(db, user=user)
+
+    monkeypatch.setattr(profile_service, "_find_profile", find_missing_once)
 
     profile = get_or_create_profile(db_session, user=candidate)
 
+    # Recovered by re-reading rather than raising, and no duplicate was left.
+    assert calls["count"] == 2
     assert profile.headline == "Written by the winner"
     assert db_session.query(CandidateProfile).count() == 1
+
+
+def test_a_constraint_violation_with_no_row_behind_it_still_raises(
+    db_session: Session, candidate: User, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the race is recovered from, not every IntegrityError.
+
+    If the lookup still finds nothing after the rollback, something other than
+    the expected race failed. Swallowing that would turn a real fault into a
+    silent one, so it is re-raised.
+    """
+    db_session.add(CandidateProfile(user_id=candidate.id))
+    db_session.commit()
+
+    monkeypatch.setattr(profile_service, "_find_profile", lambda db, *, user: None)
+
+    with pytest.raises(IntegrityError):
+        get_or_create_profile(db_session, user=candidate)
 
 
 def test_profiles_are_separate_per_candidate(

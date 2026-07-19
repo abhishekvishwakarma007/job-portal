@@ -1,0 +1,55 @@
+# Local gates, run before a commit is created rather than after it is pushed.
+#
+# CI runs the same checks, but a red tick ten minutes later is a worse place to
+# find a formatting slip than the terminal you are already in. These are the
+# fast ones only — tests need a database, so they stay in CI and in the
+# developer's own loop.
+#
+# Install once per clone:
+#     pip install pre-commit && pre-commit install
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-toml
+      # Catches a large file added by accident before it is in history, where
+      # removing it means a rewrite rather than a delete.
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      # Committing a private key is the mistake with no clean undo.
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        name: ruff (backend)
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        name: ruff-format (backend)
+        files: ^backend/
+
+  - repo: local
+    hooks:
+      # Local rather than a mirror repo: both need the project's own
+      # node_modules and tsconfig, and a pinned mirror would typecheck against
+      # a different TypeScript than the build uses.
+      - id: eslint
+        name: eslint (frontend)
+        entry: bash -c 'cd frontend && npx eslint .'
+        language: system
+        files: ^frontend/src/.*\.(ts|tsx)$
+        pass_filenames: false
+
+      - id: tsc
+        name: tsc --noEmit (frontend)
+        entry: bash -c 'cd frontend && npx tsc --noEmit'
+        language: system
+        files: ^frontend/.*\.(ts|tsx)$
+        pass_filenames: false

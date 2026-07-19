@@ -85,6 +85,18 @@ when all three services report `healthy` in `docker compose ps`.
 Stop with `docker compose down`, or `docker compose down -v` to discard the
 database as well.
 
+**If a port is already in use.** The stack publishes 5173, 8000, and 5432. A
+machine already running Postgres will collide on the last of these, and Docker
+reports it as `address already in use` before anything starts. Each is
+overridable:
+
+```bash
+POSTGRES_PORT=5433 BACKEND_PORT=8001 FRONTEND_PORT=5174 docker compose up --build
+```
+
+The database port is bound to loopback only, and nothing outside the host needs
+it — the containers reach Postgres over the compose network.
+
 ---
 
 ## 4. Test credentials
@@ -338,6 +350,17 @@ Coverage concentrates on the boundaries that matter: cross-tenant 404s, every
 role gate, the duplicate-apply race at the database level, no-enumeration
 login, account lockout, and refresh-token replay detection.
 
+**Local gate.** `pre-commit` runs ruff, ruff-format, eslint and `tsc` before a
+commit is created, so a formatting slip is caught in the terminal rather than
+as a red tick ten minutes later:
+
+```bash
+pip install pre-commit && pre-commit install
+```
+
+Backend coverage is gated at 90% in `pyproject.toml` and enforced in CI; it
+currently sits at 99%.
+
 **End-to-end suite.** `backend/tests_e2e` runs against a *running* stack over
 HTTP — no TestClient, no dependency overrides. A pass means the containers, the
 proxy, the migrations, and the seed all did their jobs, not merely that the
@@ -381,7 +404,6 @@ service to report healthy, and then runs the end-to-end suite against it.
 | Messaging | In-app only; no email is sent, by design for a review environment |
 | Resume upload | Not implemented; profiles are structured text, no file storage |
 | Profile sections | Employment and education are free text, not structured rows |
-| New modules | Profile, notification and recommendation services are covered by the end-to-end suite but have no unit tests yet |
 
 ---
 

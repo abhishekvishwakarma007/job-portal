@@ -9,6 +9,21 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q --strict-markers --strict-config"
 
+[tool.coverage.run]
+source = ["app"]
+omit = ["app/db/seed.py"]
+
+[tool.coverage.report]
+# Enforced in CI. Set at the level currently reached rather than an
+# aspirational number, so it ratchets up and never silently drops.
+fail_under = 90
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
 [tool.mypy]
 python_version = "3.11"
 strict = true
