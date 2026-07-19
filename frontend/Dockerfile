@@ -2,7 +2,7 @@
 # carries no Node, no node_modules, and no source — just static files and a web
 # server, which is both far smaller and a much smaller attack surface.
 
-FROM node:22-alpine AS builder
+FROM node:26-alpine AS builder
 
 WORKDIR /build
 
