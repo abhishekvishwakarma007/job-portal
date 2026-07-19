@@ -73,6 +73,9 @@ export default function JobDetailPage() {
                   <span className="badge badge--neutral">Draft</span>
                 )}
               </div>
+              <p style={{ color: 'var(--accent)', fontWeight: 600, margin: 0 }}>
+                {job.company}
+              </p>
               <p className="muted">
                 {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employment_type]} ·
                 posted by {job.created_by.full_name}

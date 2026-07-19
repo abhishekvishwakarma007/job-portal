@@ -20,10 +20,12 @@ import {
  */
 export default function JobsPage() {
   const [titleInput, setTitleInput] = useState('')
+  const [companyInput, setCompanyInput] = useState('')
   const [locationInput, setLocationInput] = useState('')
   const [employmentType, setEmploymentType] = useState<EmploymentType | ''>('')
 
   const [title, setTitle] = useState('')
+  const [company, setCompany] = useState('')
   const [location, setLocation] = useState('')
 
   const [openJobId, setOpenJobId] = useState<string | null>(null)
@@ -33,22 +35,25 @@ export default function JobsPage() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setTitle(titleInput.trim())
+      setCompany(companyInput.trim())
       setLocation(locationInput.trim())
     }, 300)
     return () => clearTimeout(timer)
-  }, [titleInput, locationInput])
+  }, [titleInput, companyInput, locationInput])
 
   const { data, isLoading, error } = useApiResource<Page<Job>>('/jobs', {
     search: title || undefined,
+    company: company || undefined,
     location: location || undefined,
     employment_type: employmentType || undefined,
   })
 
   const jobs = data?.items ?? []
-  const hasFilters = Boolean(title || location || employmentType)
+  const hasFilters = Boolean(title || company || location || employmentType)
 
   function clearFilters() {
     setTitleInput('')
+    setCompanyInput('')
     setLocationInput('')
     setEmploymentType('')
   }
@@ -80,7 +85,7 @@ export default function JobsPage() {
       </div>
 
       {/* Filters */}
-      <div className="mb-5 grid gap-3 rounded-xl border border-[color:var(--border)] bg-white p-4 shadow-sm sm:grid-cols-3">
+      <div className="mb-5 grid gap-3 rounded-xl border border-[color:var(--border)] bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <label
             htmlFor="filter-title"
@@ -94,6 +99,23 @@ export default function JobsPage() {
             value={titleInput}
             onChange={(event) => setTitleInput(event.target.value)}
             placeholder="Engineer, designer…"
+            className="mt-1 w-full rounded-lg border border-[color:var(--border)] px-3 py-2 text-sm"
+          />
+        </div>
+
+        <div>
+          <label
+            htmlFor="filter-company"
+            className="block text-xs font-semibold uppercase tracking-wide text-[color:var(--text-muted)]"
+          >
+            Company
+          </label>
+          <input
+            id="filter-company"
+            type="search"
+            value={companyInput}
+            onChange={(event) => setCompanyInput(event.target.value)}
+            placeholder="Northwind, Kestrel…"
             className="mt-1 w-full rounded-lg border border-[color:var(--border)] px-3 py-2 text-sm"
           />
         </div>

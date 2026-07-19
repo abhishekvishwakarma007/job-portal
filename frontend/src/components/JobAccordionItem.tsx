@@ -86,9 +86,12 @@ export default function JobAccordionItem({
             <span className="block text-base font-semibold text-slate-900">
               {job.title}
             </span>
+            <span className="mt-0.5 block text-sm font-medium text-[color:var(--accent)]">
+              {job.company}
+            </span>
             <span className="mt-1 block text-sm text-[color:var(--text-muted)]">
-              {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employment_type]} ·{' '}
-              {job.created_by.full_name}
+              {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employment_type]} ·
+              posted by {job.created_by.full_name}
             </span>
           </span>
 

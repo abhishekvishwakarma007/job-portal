@@ -32,6 +32,7 @@ export interface User {
 export interface Job {
   id: string
   title: string
+  company: string
   description: string
   location: string
   employment_type: EmploymentType

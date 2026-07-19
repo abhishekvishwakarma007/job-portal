@@ -130,10 +130,12 @@ export default function LandingPage() {
                     className="block rounded-xl border border-[color:var(--border)] bg-white p-5 no-underline shadow-sm transition hover:border-[color:var(--accent)]"
                   >
                     <p className="font-semibold text-slate-900">{job.title}</p>
+                    <p className="mt-0.5 text-sm font-medium text-[color:var(--accent)]">
+                      {job.company}
+                    </p>
                     <p className="mt-1 text-sm text-[color:var(--text-muted)]">
                       {job.location} ·{' '}
-                      {EMPLOYMENT_TYPE_LABELS[job.employment_type]} ·{' '}
-                      {job.created_by.full_name}
+                      {EMPLOYMENT_TYPE_LABELS[job.employment_type]}
                     </p>
                   </Link>
                 </li>

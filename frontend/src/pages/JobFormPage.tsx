@@ -7,11 +7,12 @@ import { ApiError, request } from '../lib/api'
 import { EMPLOYMENT_TYPE_LABELS, type EmploymentType, type Job } from '../types'
 
 const TITLE_MAX_LENGTH = 200
+const COMPANY_MAX_LENGTH = 120
 const LOCATION_MAX_LENGTH = 120
 const DESCRIPTION_MAX_LENGTH = 20_000
 
 type FieldErrors = Partial<
-  Record<'title' | 'description' | 'location' | 'employment_type', string>
+  Record<'title' | 'company' | 'description' | 'location' | 'employment_type', string>
 >
 
 /**
@@ -29,6 +30,7 @@ export default function JobFormPage() {
   const existing = useApiResource<Job>(isEditing ? `/jobs/${jobId}` : '/jobs')
 
   const [title, setTitle] = useState('')
+  const [company, setCompany] = useState('')
   const [description, setDescription] = useState('')
   const [location, setLocation] = useState('')
   const [employmentType, setEmploymentType] =
@@ -45,6 +47,7 @@ export default function JobFormPage() {
 
     const job = existing.data
     setTitle(job.title)
+    setCompany(job.company)
     setDescription(job.description)
     setLocation(job.location)
     setEmploymentType(job.employment_type)
@@ -53,6 +56,10 @@ export default function JobFormPage() {
 
   function validate(): FieldErrors {
     const errors: FieldErrors = {}
+
+    if (!company.trim()) errors.company = 'Company is required.'
+    else if (company.length > COMPANY_MAX_LENGTH)
+      errors.company = `Company must be at most ${COMPANY_MAX_LENGTH} characters.`
 
     if (!title.trim()) errors.title = 'Title is required.'
     else if (title.length > TITLE_MAX_LENGTH)
@@ -79,6 +86,7 @@ export default function JobFormPage() {
 
     const body = {
       title,
+      company,
       description,
       location,
       employment_type: employmentType,

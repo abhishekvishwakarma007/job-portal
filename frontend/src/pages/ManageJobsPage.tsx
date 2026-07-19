@@ -95,7 +95,8 @@ export default function ManageJobsPage() {
               </div>
 
               <p className="muted">
-                {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employment_type]}
+                {job.company} · {job.location} ·{' '}
+                {EMPLOYMENT_TYPE_LABELS[job.employment_type]}
               </p>
 
               <div className="row">
