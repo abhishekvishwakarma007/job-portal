@@ -23,7 +23,9 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import Base
 
 ENTITY_TYPE_MAX_LENGTH = 40
-SUMMARY_MAX_LENGTH = 500
+# Sized separately from entity_type. They happen to match today, but an action
+# name and an entity name are not the same thing and should not grow together.
+ACTION_MAX_LENGTH = 40
 
 
 class AuditAction(StrEnum):
@@ -60,9 +62,7 @@ class AuditLogEntry(Base):
     )
     actor_email: Mapped[str] = mapped_column(String(254), nullable=False)
 
-    action: Mapped[AuditAction] = mapped_column(
-        String(ENTITY_TYPE_MAX_LENGTH), nullable=False
-    )
+    action: Mapped[AuditAction] = mapped_column(String(ACTION_MAX_LENGTH), nullable=False)
     entity_type: Mapped[str] = mapped_column(
         String(ENTITY_TYPE_MAX_LENGTH), nullable=False
     )

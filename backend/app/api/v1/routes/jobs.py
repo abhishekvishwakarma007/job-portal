@@ -169,7 +169,9 @@ def edit_job(
     except JobNotFoundError as exc:
         raise _JOB_NOT_FOUND from exc
 
-    return JobRead.model_validate(update_job(db, job=job, payload=payload))
+    return JobRead.model_validate(
+        update_job(db, job=job, payload=payload, actor=current_user)
+    )
 
 
 @router.delete(

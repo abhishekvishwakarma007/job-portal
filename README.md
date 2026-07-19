@@ -223,6 +223,7 @@ Interactive documentation at **http://localhost:8000/docs**.
 | `PATCH` | `/api/v1/profile/me` | Candidate |
 | `GET` | `/api/v1/notifications/mine` | Authenticated |
 | `PATCH` | `/api/v1/notifications/{id}/read` | Recipient only |
+| `DELETE` | `/api/v1/notifications/{id}` | Recipient only |
 | `GET` | `/health` | Public |
 
 Browse accepts `search` (title), `company`, `location`, and `employment_type`
@@ -273,6 +274,16 @@ indistinguishable.
 
 **Mass assignment.** Request schemas name only client-writable fields. A body
 carrying `is_active`, `status`, or `created_by_id` has it ignored, not honoured.
+
+**Audit log.** Five actions are recorded with the actor and the previous value:
+an application's status changing, a posting being deleted, published or
+unpublished, and an applicant being messaged. Entries share the caller's
+transaction, so a rolled-back change takes its log entry with it — a log that
+over-reports is worse than none, because it gets believed. `entity_id` carries
+no foreign key, so an entry outlives the record it describes rather than being
+cascaded away with it, and `actor_email` is copied at write time so the entry
+still names who acted after that account is deleted. It is write-only today,
+which the limitations table records.
 
 **Messaging cannot be misaddressed.** The recipient of an HR message comes from
 the application, never the request body, so a message cannot be sent to someone
@@ -358,8 +369,10 @@ as a red tick ten minutes later:
 pip install pre-commit && pre-commit install
 ```
 
-Backend coverage is gated at 90% in `pyproject.toml` and enforced in CI; it
-currently sits at 99%.
+Backend coverage is gated in `pyproject.toml` (`fail_under`) and enforced in
+CI, so a change that drops it fails the build rather than going unnoticed. The
+current figure is printed by the run rather than quoted here, because a number
+copied into prose only stays right by accident.
 
 **End-to-end suite.** `backend/tests_e2e` runs against a *running* stack over
 HTTP — no TestClient, no dependency overrides. A pass means the containers, the
@@ -394,15 +407,14 @@ service to report healthy, and then runs the end-to-end suite against it.
 | Proxy headers | `X-Forwarded-For` not trusted; needs configuration behind a real load balancer |
 | Search | Title only, `ILIKE` — no full-text index or relevance ranking |
 | Pagination | Offset-based; fine at this scale, drifts under concurrent inserts |
-| File uploads | No CV or résumé upload; the cover letter is plain text |
 | Email | No verification, password reset, or notifications |
-| Audit log | Status changes are not written to a separate audit table |
+| Audit log | Records the sensitive actions, but write-only — no endpoint or screen reads it back, so it is queried with psql |
 | Roles | HR and Candidate only; no super-admin tier |
 | Token cleanup | Expired refresh-token rows are not pruned by a background job |
 | Accessibility | Labels and keyboard paths covered; not screen-reader audited |
 | Applicant ranking | Keyword overlap only — no semantic matching or ML |
 | Messaging | In-app only; no email is sent, by design for a review environment |
-| Resume upload | Not implemented; profiles are structured text, no file storage |
+| Resume upload | No CV upload; profiles are structured text and the cover letter is plain text |
 | Profile sections | Employment and education are free text, not structured rows |
 
 ---
@@ -410,9 +422,10 @@ service to report healthy, and then runs the end-to-end suite against it.
 ## 12. Notes on Claude Code usage
 
 Claude Code was the primary development assistant, driven test-first through a
-project skill (`.claude/skills/tdd-feature`) that required a failing test —
-failing for the *right* reason, not an import error — before any
-implementation.
+project skill that required a failing test — failing for the *right* reason,
+not an import error — before any implementation. That skill lives under
+`.claude/`, which this repository does not track, so it is described here
+rather than linked.
 
 The commit history is the honest record. Alongside features it contains genuine
 fix-up commits for problems found by **running the stack rather than trusting

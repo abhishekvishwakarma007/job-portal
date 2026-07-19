@@ -10,9 +10,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.application import Application
+from app.models.audit import AuditAction
 from app.models.job import Job
 from app.models.notification import Notification
 from app.models.user import User
+from app.services import audit
 
 
 class NotificationNotFoundError(Exception):
@@ -34,6 +36,18 @@ def notify_applicant(
         job_id=job.id,
     )
     db.add(notification)
+
+    # A message sent in the company's name to someone who applied — sensitive
+    # enough to want a record of who sent it and to whom.
+    audit.record(
+        db,
+        actor=sender,
+        action=AuditAction.APPLICANT_CONTACTED,
+        entity_type="application",
+        entity_id=application.id,
+        summary=f"Messaged {application.candidate_id} about {job.title!r}",
+    )
+
     db.commit()
     db.refresh(notification)
 

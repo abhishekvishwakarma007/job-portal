@@ -5,6 +5,8 @@ cases where the thing being described has changed or gone: a deleted job, a
 deleted actor, and a change that rolled back.
 """
 
+from pathlib import Path
+
 import pytest
 from sqlalchemy.orm import Session
 
@@ -12,10 +14,12 @@ from app.models.application import Application, ApplicationStatus
 from app.models.audit import AuditAction, AuditLogEntry
 from app.models.job import EmploymentType, Job
 from app.models.user import User, UserRole
+from app.schemas.job import JobUpdate
 from app.services import audit
 from app.services.application import update_application_status
 from app.services.auth import register_user
-from app.services.job import delete_job
+from app.services.job import delete_job, update_job
+from app.services.notification import notify_applicant
 
 PASSWORD = "Str0ng@Password"
 
@@ -219,3 +223,110 @@ def test_entries_are_scoped_to_their_entity(
     )
 
     assert audit.entries_for(db_session, entity_type="job", entity_id=job.id) == []
+
+
+def test_publishing_is_recorded(db_session: Session, hr_user: User) -> None:
+    """Visibility changes decide who can see a posting, so they are audited."""
+    draft = Job(
+        title="Engineering Manager",
+        company="Northwind Labs",
+        description="Not advertised yet.",
+        location="Remote",
+        employment_type=EmploymentType.FULL_TIME,
+        is_published=False,
+        created_by_id=hr_user.id,
+    )
+    db_session.add(draft)
+    db_session.commit()
+
+    update_job(db_session, job=draft, payload=JobUpdate(is_published=True), actor=hr_user)
+
+    entries = audit.entries_for(db_session, entity_type="job", entity_id=draft.id)
+
+    assert [entry.action for entry in entries] == [AuditAction.JOB_PUBLISHED]
+
+
+def test_unpublishing_is_recorded(db_session: Session, job: Job, hr_user: User) -> None:
+    """The other direction of the same decision."""
+    update_job(db_session, job=job, payload=JobUpdate(is_published=False), actor=hr_user)
+
+    entries = audit.entries_for(db_session, entity_type="job", entity_id=job.id)
+
+    assert [entry.action for entry in entries] == [AuditAction.JOB_UNPUBLISHED]
+
+
+def test_editing_wording_is_not_recorded(
+    db_session: Session, job: Job, hr_user: User
+) -> None:
+    """Only visibility is audited, not every keystroke.
+
+    Logging ordinary edits would bury the changes that matter in noise, which
+    is how audit logs stop being read.
+    """
+    update_job(
+        db_session, job=job, payload=JobUpdate(title="Staff Engineer"), actor=hr_user
+    )
+
+    assert audit.entries_for(db_session, entity_type="job", entity_id=job.id) == []
+
+
+def test_republishing_an_already_published_job_records_nothing(
+    db_session: Session, job: Job, hr_user: User
+) -> None:
+    """A no-op change is not an event.
+
+    The field being present in the payload is not the same as it changing, and
+    recording the former would log every save of an unchanged checkbox.
+    """
+    update_job(db_session, job=job, payload=JobUpdate(is_published=True), actor=hr_user)
+
+    assert audit.entries_for(db_session, entity_type="job", entity_id=job.id) == []
+
+
+def test_contacting_an_applicant_is_recorded(
+    db_session: Session, application: Application, job: Job, hr_user: User
+) -> None:
+    """A message sent in the company name to someone who applied."""
+    notify_applicant(
+        db_session,
+        application=application,
+        job=job,
+        sender=hr_user,
+        message="We would like to invite you to a first interview.",
+    )
+
+    entries = audit.entries_for(
+        db_session, entity_type="application", entity_id=application.id
+    )
+
+    assert [entry.action for entry in entries] == [AuditAction.APPLICANT_CONTACTED]
+    assert entries[0].actor_email == hr_user.email
+
+
+def test_every_declared_action_has_a_call_site() -> None:
+    """Guards against the enum advertising coverage that does not exist.
+
+    Three members were previously declared and never recorded, so the type
+    claimed more audit coverage than the code delivered. This fails if that
+    happens again.
+    """
+    # Anchored to this file, not the working directory: an autouse fixture
+    # runs every test from a temp directory, so a relative path finds nothing
+    # and the assertion would pass by scanning zero files.
+    app_root = Path(__file__).resolve().parent.parent / "app"
+    declaration = app_root / "models" / "audit.py"
+
+    recorded: set[AuditAction] = set()
+
+    for path in app_root.rglob("*.py"):
+        if path == declaration:
+            continue
+
+        text = path.read_text(encoding="utf-8")
+        recorded.update(
+            action for action in AuditAction if f"AuditAction.{action.name}" in text
+        )
+
+    assert recorded == set(
+        AuditAction
+    ), f"declared but never recorded: {set(AuditAction) - recorded}"

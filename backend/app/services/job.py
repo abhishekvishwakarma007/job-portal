@@ -152,14 +152,44 @@ def create_job(db: Session, *, payload: JobCreate, owner: User) -> Job:
     return job
 
 
-def update_job(db: Session, *, job: Job, payload: JobUpdate) -> Job:
-    """Apply a partial edit.
+def update_job(
+    db: Session, *, job: Job, payload: JobUpdate, actor: User | None = None
+) -> Job:
+    """Apply a partial edit, recording a visibility change.
 
     exclude_unset is what makes PATCH partial: without it, every field the
     caller omitted would arrive as None and blank the stored value.
+
+    Publishing and unpublishing are audited because they change who can see a
+    posting; editing its wording is not. The actor is optional so a non-HTTP
+    caller can still edit without inventing one.
     """
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    was_published = job.is_published
+
+    for field, value in changes.items():
         setattr(job, field, value)
+
+    visibility_changed = (
+        actor is not None
+        and "is_published" in changes
+        and job.is_published != was_published
+    )
+
+    if visibility_changed and actor is not None:
+        audit.record(
+            db,
+            actor=actor,
+            action=(
+                AuditAction.JOB_PUBLISHED
+                if job.is_published
+                else AuditAction.JOB_UNPUBLISHED
+            ),
+            entity_type="job",
+            entity_id=job.id,
+            summary=f"{job.title!r} is now "
+            f"{'published' if job.is_published else 'a draft'}",
+        )
 
     db.commit()
     db.refresh(job)

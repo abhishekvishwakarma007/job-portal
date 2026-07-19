@@ -70,9 +70,10 @@ jobs:
       - name: Type check
         run: mypy app tests
 
-      # The db fixtures call pytest.skip when the database is unreachable, so a
-      # misconfigured service would produce a green tick over a suite that
-      # never ran. Prove the connection first, and fail here if it is absent.
+      # The fixtures now fail rather than skip on an unreachable database, so a
+      # vanished suite can no longer read green. This step is kept because it
+      # fails in one line with the URL in it, rather than inside a fixture
+      # partway through collection.
       - name: Verify the test database is reachable
         env:
           TEST_DATABASE_URL: postgresql+psycopg://jobportal:jobportal@localhost:5432/jobportal_test

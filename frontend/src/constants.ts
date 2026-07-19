@@ -28,9 +28,6 @@ export const LOCATION_MAX_LENGTH = 120
 /** backend/app/schemas/job.py — DESCRIPTION_MAX_LENGTH */
 export const JOB_DESCRIPTION_MAX_LENGTH = 20_000
 
-/** backend/app/models/user.py — FULL_NAME_MAX_LENGTH */
-export const FULL_NAME_MAX_LENGTH = 120
-
 /** backend/app/models/profile.py — HEADLINE_MAX_LENGTH */
 export const HEADLINE_MAX_LENGTH = 200
 

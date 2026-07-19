@@ -102,8 +102,11 @@ describe('JobsPage', () => {
       expect(lastJobsQuery(spy).get('search')).toBe('engineer')
     })
 
-    // Eight characters typed; a request per keystroke would be eight calls.
-    expect(spy.mock.calls.length - before).toBeLessThan(8)
+    // Eight characters typed. Debouncing should collapse them into a single
+    // trailing request; allowing up to two tolerates a race between the
+    // initial value settling and the debounce firing, without permitting the
+    // seven-of-eight that a broken debounce would produce.
+    expect(spy.mock.calls.length - before).toBeLessThanOrEqual(2)
   })
 
   it('offers to clear filters only once one is set', async () => {
