@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 import pytest
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Connection, Engine, create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
@@ -35,6 +35,32 @@ DEFAULT_TEST_DATABASE_URL = (
 
 # Enforced by _require_test_database before anything destructive runs.
 TEST_DATABASE_SUFFIX = "_test"
+
+# Arbitrary constant identifying this suite's advisory lock. Any concurrent
+# pytest process against the same database waits on it rather than racing.
+_SUITE_LOCK_ID = 4_812_007
+
+
+def _acquire_exclusive_lock(engine: Engine) -> Connection:
+    """Hold a Postgres advisory lock for the lifetime of the test session.
+
+    Two pytest processes pointed at one test database will destroy each other:
+    this fixture drops and recreates the public schema, so a second run wiping
+    the schema mid-suite makes rows a first run just committed disappear — which
+    surfaces as a baffling "could not refresh instance" rather than anything
+    that names the real cause.
+
+    The lock serialises them instead. A concurrent run blocks here until the
+    first finishes rather than corrupting it. Session-level (not
+    transaction-level) so it is held across every transaction the suite opens,
+    and released when this connection closes.
+    """
+    connection = engine.connect()
+    connection.execute(text(f"SELECT pg_advisory_lock({_SUITE_LOCK_ID})"))
+    # Commit so the lock is not sitting inside an open transaction that later
+    # statements would extend.
+    connection.commit()
+    return connection
 
 
 def _test_database_url() -> str:
@@ -94,6 +120,10 @@ def db_engine() -> Iterator[Engine]:
             "Start it with: docker compose up -d db"
         )
 
+    # Serialise against any other pytest process on this database before
+    # touching the schema. Held until the session ends.
+    lock_connection = _acquire_exclusive_lock(engine)
+
     # Drop the schema outright rather than downgrading: an interrupted run, or
     # one that predates Alembic, can leave tables and enum types behind with no
     # alembic_version row to downgrade from, and `upgrade` would then collide
@@ -107,6 +137,8 @@ def db_engine() -> Iterator[Engine]:
 
     yield engine
 
+    # Closing releases the advisory lock, letting any waiting run proceed.
+    lock_connection.close()
     engine.dispose()
 
 
