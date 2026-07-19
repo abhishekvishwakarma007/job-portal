@@ -1,6 +1,6 @@
-# Local development stack. The backend and frontend services join this file as
-# their Dockerfiles land; the database comes first because the test suite runs
-# against a real Postgres rather than mocks or SQLite.
+# Local development stack. The frontend joins this file as its Dockerfile
+# lands; the database came first because the test suite runs against a real
+# Postgres rather than mocks or SQLite.
 #
 # Values here are development-only and intentionally committed: the assessor
 # clones fresh with no .env and runs `docker compose up --build`, so the stack
@@ -35,6 +35,37 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+    container_name: jobportal-backend
+    restart: unless-stopped
+    environment:
+      # Committed dev-only values. The assessor clones fresh with no .env and
+      # runs `docker compose up --build`, and the app deliberately refuses to
+      # boot without these — so compose has to supply them or nothing starts.
+      # Each takes an override from the host environment, which is how a real
+      # deployment injects its own without editing this file.
+      #
+      # This key is development-only and is NOT the one any developer has
+      # locally. Rotate it for any deployment that is reachable by anyone else:
+      # anyone holding it can forge a token for any user, including an HR role.
+      SECRET_KEY: ${SECRET_KEY:-eWkxUgh3sU9zD4WzK3dHiDBF1F3ZaFTb9OWeGLcACoo}
+      # Hostname `db`, not localhost: services reach each other over the compose
+      # network, where the service name is the DNS name.
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://jobportal:jobportal@db:5432/jobportal}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        # Health-gated rather than `depends_on: [db]`, which waits only for the
+        # container to start. Postgres accepts and then drops connections during
+        # init, so "started" would let migrations run against a database that is
+        # about to hang up on them.
+        condition: service_healthy
 
 volumes:
   # Named rather than anonymous so data survives `docker compose down`.

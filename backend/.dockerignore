@@ -1,0 +1,21 @@
+# Keep the build context small and, more importantly, keep host-only files out
+# of the image. .env is the one that matters: baking a developer's real signing
+# key into a shipped image is exactly the leak the config guards are meant to
+# prevent.
+.env
+.env.*
+!.env.example
+
+.venv/
+venv/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+.git/
+.gitignore
