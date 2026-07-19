@@ -178,6 +178,9 @@ SEED_JOBS: tuple[SeedJob, ...] = (
 # The candidate arrives having already applied to one role, so "My
 # applications" and the HR applicant pipeline both show real rows on a first
 # look rather than an empty state.
+# What the migration's server default leaves on rows that predate the column.
+UNSET_COMPANY = "Confidential"
+
 SEED_APPLICATION_JOB_TITLE = "Senior Platform Engineer"
 SEED_APPLICATION_COVER_LETTER = (
     "I have run deployment pipelines for six years, most recently migrating a "
@@ -195,6 +198,7 @@ def seed_jobs(db: Session, *, owner: User) -> list[Job]:
     recognise as "already there".
     """
     created: list[Job] = []
+    backfilled: list[Job] = []
 
     for spec in SEED_JOBS:
         existing = db.execute(
@@ -202,6 +206,13 @@ def seed_jobs(db: Session, *, owner: User) -> list[Job]:
         ).scalar_one_or_none()
 
         if existing is not None:
+            # Backfill the company on a posting created before that column
+            # existed, where the migration's server default left "Confidential".
+            # Only that exact value is replaced, so a company an HR user typed
+            # themselves is never overwritten.
+            if existing.company == UNSET_COMPANY:
+                existing.company = spec.company
+                backfilled.append(existing)
             continue
 
         job = Job(
@@ -216,11 +227,13 @@ def seed_jobs(db: Session, *, owner: User) -> list[Job]:
         db.add(job)
         created.append(job)
 
-    if created:
+    if created or backfilled:
         db.commit()
         for job in created:
             db.refresh(job)
-            logger.info("seed: created job %r", job.title)
+            logger.info("seed: created job %r (%s)", job.title, job.company)
+        for job in backfilled:
+            logger.info("seed: set company on %r to %r", job.title, job.company)
 
     return created
 
