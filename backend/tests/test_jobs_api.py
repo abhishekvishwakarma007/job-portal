@@ -74,6 +74,7 @@ def job_payload(**overrides: Any) -> dict[str, Any]:
     """A valid job body, overridable per test."""
     payload: dict[str, Any] = {
         "title": "Senior Platform Engineer",
+        "company": "Northwind Labs",
         "description": "Own the deployment pipeline end to end.",
         "location": "Remote",
         "employment_type": EmploymentType.FULL_TIME.value,
@@ -87,6 +88,7 @@ def create_job(db: Session, owner: User, **overrides: Any) -> Job:
     fields = job_payload(**overrides)
     job = Job(
         title=fields["title"],
+        company=fields["company"],
         description=fields["description"],
         location=fields["location"],
         employment_type=EmploymentType(fields["employment_type"]),
