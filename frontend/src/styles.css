@@ -1,3 +1,10 @@
+/* Tailwind's utilities and component layers, available for new work. The
+   `base` layer (preflight) is disabled in tailwind.config.js, so nothing here
+   resets the styles below — the two systems coexist rather than one replacing
+   the other. */
+@tailwind components;
+@tailwind utilities;
+
 /* A small hand-written system rather than a UI framework: the whole surface is
    a handful of screens, and a dependency would be more code to audit than the
    200 lines it replaces. Tokens first so spacing and colour stay consistent. */
