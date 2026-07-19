@@ -157,7 +157,7 @@ def set_application_status(
         raise _APPLICATION_NOT_FOUND from exc
 
     updated = update_application_status(
-        db, application=application, status=payload.status
+        db, application=application, status=payload.status, actor=current_user
     )
 
     return ApplicationRead.model_validate(updated)

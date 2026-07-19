@@ -10,9 +10,11 @@ import uuid
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
+from app.models.audit import AuditAction
 from app.models.job import EmploymentType, Job
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobUpdate
+from app.services import audit
 
 
 class JobNotFoundError(Exception):
@@ -164,7 +166,24 @@ def update_job(db: Session, *, job: Job, payload: JobUpdate) -> Job:
     return job
 
 
-def delete_job(db: Session, *, job: Job) -> None:
-    """Remove a posting."""
+def delete_job(db: Session, *, job: Job, actor: User) -> None:
+    """Remove a posting, recording who removed it.
+
+    Deleting a posting cascades to every application on it, so this destroys
+    other people's records as a side effect. That is the clearest case in the
+    system for wanting to know afterwards who did it and what went with it.
+
+    The entry is written before the delete so the title is still readable — and
+    it carries no foreign key to the job, which is about to stop existing.
+    """
+    audit.record(
+        db,
+        actor=actor,
+        action=AuditAction.JOB_DELETED,
+        entity_type="job",
+        entity_id=job.id,
+        summary=f"Deleted {job.title!r} at {job.company}",
+    )
+
     db.delete(job)
     db.commit()

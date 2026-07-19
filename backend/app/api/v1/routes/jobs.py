@@ -188,7 +188,7 @@ def remove_job(
     except JobNotFoundError as exc:
         raise _JOB_NOT_FOUND from exc
 
-    delete_job(db, job=job)
+    delete_job(db, job=job, actor=current_user)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 

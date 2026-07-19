@@ -13,8 +13,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.application import Application, ApplicationStatus
+from app.models.audit import AuditAction
 from app.models.job import Job
 from app.models.user import User
+from app.services import audit
 
 
 class ApplicationNotFoundError(Exception):
@@ -154,10 +156,33 @@ def get_application_for_job_owner(
 
 
 def update_application_status(
-    db: Session, *, application: Application, status: ApplicationStatus
+    db: Session,
+    *,
+    application: Application,
+    status: ApplicationStatus,
+    actor: User,
 ) -> Application:
-    """Move an application to a new pipeline state."""
+    """Move an application to a new pipeline state, recording who moved it.
+
+    A rejection someone disputes is exactly the case an audit trail exists
+    for, so the previous state is captured in the entry rather than left to be
+    inferred.
+
+    The entry shares this transaction: if the update rolls back, so does the
+    log, and the log never claims a change that did not happen.
+    """
+    previous = application.status
     application.status = status
+
+    audit.record(
+        db,
+        actor=actor,
+        action=AuditAction.APPLICATION_STATUS_CHANGED,
+        entity_type="application",
+        entity_id=application.id,
+        summary=f"{previous.value} -> {status.value}",
+    )
+
     db.commit()
     db.refresh(application)
     return application
