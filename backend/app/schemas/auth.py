@@ -15,8 +15,15 @@ from app.core.security import MAX_PASSWORD_BYTES
 from app.models.user import FULL_NAME_MAX_LENGTH, UserRole
 
 # Long enough that an offline attack on a leaked hash is expensive, short enough
-# that a passphrase a person will actually remember still fits.
-MIN_PASSWORD_LENGTH = 12
+# NIST SP 800-63B treats 8 as the floor for a user-chosen secret. Length alone
+# is a weak signal at that size, so the class rule below carries the rest of the
+# weight rather than the number doing it on its own.
+MIN_PASSWORD_LENGTH = 8
+
+# Requiring 3 of 4 rather than all 4 keeps a long passphrase viable — "correct
+# horse battery staple 7" has no capital and should not be refused — while still
+# rejecting the single-class strings that dictionary attacks start from.
+REQUIRED_CHARACTER_CLASSES = 3
 
 
 class UserCreate(BaseModel):
@@ -48,11 +55,21 @@ class UserCreate(BaseModel):
         if len(value.encode("utf-8")) > MAX_PASSWORD_BYTES:
             raise ValueError(f"Password must be at most {MAX_PASSWORD_BYTES} bytes.")
 
-        if not any(character.isalpha() for character in value):
-            raise ValueError("Password must contain at least one letter.")
+        classes_present = sum(
+            (
+                any(character.islower() for character in value),
+                any(character.isupper() for character in value),
+                any(character.isdigit() for character in value),
+                any(not character.isalnum() for character in value),
+            )
+        )
 
-        if not any(character.isdigit() for character in value):
-            raise ValueError("Password must contain at least one digit.")
+        if classes_present < REQUIRED_CHARACTER_CLASSES:
+            raise ValueError(
+                "Password must contain at least "
+                f"{REQUIRED_CHARACTER_CLASSES} of: lowercase, uppercase, digit, "
+                "symbol."
+            )
 
         return value
 

@@ -153,8 +153,10 @@ def test_register_normalises_the_stored_email(
     "password",
     [
         "short",  # below the length floor
-        "alllowercaseletters",  # no digit
-        "1234567890123456",  # no letter
+        "alllowercaseletters",  # one class only
+        "1234567890123456",  # one class only
+        "password1",  # two classes — the shape a dictionary attack starts from
+        "PASSWORD1",  # two classes
     ],
 )
 def test_register_rejects_a_weak_password(client: TestClient, password: str) -> None:
@@ -162,6 +164,29 @@ def test_register_rejects_a_weak_password(client: TestClient, password: str) -> 
     response = register(client, password=password)
 
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "password",
+    [
+        "Admin@1234",  # the credentials the brief publishes
+        "User@1234",
+        "Passw0rd",  # exactly at the floor, three classes
+        "correct-horse-battery-staple-7",  # long passphrase, no capital
+    ],
+)
+def test_register_accepts_a_sufficiently_varied_password(
+    client: TestClient, password: str
+) -> None:
+    """The policy must not reject credentials people are actually told to use.
+
+    A long passphrase with no capital is stronger than a short mixed-case
+    string, so requiring three of four classes rather than all four keeps it
+    usable without weakening the rule against single-class passwords.
+    """
+    response = register(client, password=password)
+
+    assert response.status_code == 201, response.text
 
 
 def test_register_rejects_a_password_beyond_the_bcrypt_limit(

@@ -31,25 +31,29 @@ class SeedUser:
     role: UserRole
 
 
-# example.com is reserved for documentation (RFC 2606 §3), so these addresses
-# can never route real mail. Not a .test/.local address: email-validator refuses
-# those special-use TLDs, so EmailStr would reject the credentials at the API
-# boundary and the seeded accounts could be created but never logged into.
-# These credentials are published in the README and exist only for local
-# review — seeding is skipped entirely in production.
-# S106 is suppressed rather than silenced project-wide: these really are
-# hardcoded credentials, and that is the point of a documented demo login. The
-# rule should keep firing anywhere else it appears.
+# The exact credentials the assessment brief publishes, reproduced verbatim so
+# the assessor can type what the brief shows and get in. They exist only for
+# local review — seeding is skipped entirely in production.
+#
+# A note on the domain, because it is a trap worth not falling into twice:
+# the TLD must not be special-use. email-validator refuses .test, .local,
+# .invalid and .example, so an address there is created here happily and then
+# rejected by EmailStr at the API boundary — a documented login that cannot log
+# in. test.com is an ordinary .com and validates.
+#
+# S106 is suppressed per-line rather than silenced project-wide: these really
+# are hardcoded credentials, and that is the point of a documented demo login.
+# The rule should keep firing anywhere else it appears.
 SEED_USERS: tuple[SeedUser, ...] = (
     SeedUser(
-        email="hr@example.com",
-        password="DemoPassw0rd!",  # noqa: S106
+        email="admin@test.com",
+        password="Admin@1234",  # noqa: S106
         full_name="Dana Reyes",
         role=UserRole.HR,
     ),
     SeedUser(
-        email="candidate@example.com",
-        password="DemoPassw0rd!",  # noqa: S106
+        email="user@test.com",
+        password="User@1234",  # noqa: S106
         full_name="Sam Okafor",
         role=UserRole.CANDIDATE,
     ),

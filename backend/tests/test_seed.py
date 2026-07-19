@@ -117,6 +117,21 @@ def test_seed_specifications_are_distinct() -> None:
     assert len(emails) == len(set(emails))
 
 
+def test_documented_credentials_match_the_brief() -> None:
+    """Pin the exact credentials the assessment brief publishes.
+
+    The README hands these to the assessor verbatim, so changing them in code
+    without changing the document would leave a reviewer unable to log in with
+    what they were given. This fails loudly if they drift apart.
+    """
+    published = {(spec.email, spec.password, spec.role) for spec in SEED_USERS}
+
+    assert published == {
+        ("admin@test.com", "Admin@1234", UserRole.HR),
+        ("user@test.com", "User@1234", UserRole.CANDIDATE),
+    }
+
+
 @pytest.mark.parametrize("spec", SEED_USERS, ids=lambda spec: spec.email)
 def test_seeded_credentials_are_accepted_by_the_login_endpoint(
     valid_env: None, db_session: Session, spec: SeedUser
