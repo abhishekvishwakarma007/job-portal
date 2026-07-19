@@ -27,7 +27,7 @@ ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN npm run build
 
 
-FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+FROM nginxinc/nginx-unprivileged:1.31-alpine AS runtime
 
 # The unprivileged image already runs as a non-root user (uid 101) and listens
 # on 8080, so no user juggling is needed here.
