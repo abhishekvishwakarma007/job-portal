@@ -67,6 +67,27 @@ services:
         # about to hang up on them.
         condition: service_healthy
 
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Vite inlines this at build time, not container start. Relative by
+        # default so the browser stays same-origin and nginx proxies /api to the
+        # backend — no CORS preflight, and no API hostname baked into the
+        # bundle that would only be correct on one machine.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api/v1}
+    container_name: jobportal-frontend
+    restart: unless-stopped
+    ports:
+      # 5173 on the host is the UI address the README quotes; 8080 inside is
+      # what the unprivileged nginx image can bind as a non-root user.
+      - "5173:8080"
+    depends_on:
+      backend:
+        # nginx proxies to the backend, so starting before it is up would serve
+        # 502s to anyone quick enough to load the page.
+        condition: service_healthy
+
 volumes:
   # Named rather than anonymous so data survives `docker compose down`.
   postgres_data:
