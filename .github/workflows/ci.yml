@@ -1,0 +1,189 @@
+# Runs the same gates locally used before every commit, on a clean machine.
+#
+# That last part is the point: passing here proves the checks do not depend on
+# something only present on a developer's laptop — which is exactly the
+# situation of anyone cloning this repository fresh.
+
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+# A new push to the same branch makes the previous run's result irrelevant, so
+# cancel it rather than paying for both.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — lint, types, tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: jobportal
+          POSTGRES_PASSWORD: jobportal
+          # Named with the _test suffix the fixtures require before they will
+          # drop and recreate a schema.
+          POSTGRES_DB: jobportal_test
+        ports:
+          - 5432:5432
+        # The job starts as soon as the container starts, which is earlier than
+        # Postgres accepts connections — so gate on its own health check.
+        options: >-
+          --health-cmd "pg_isready -U jobportal -d jobportal_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Check formatting
+        run: ruff format --check .
+
+      - name: Type check
+        run: mypy app tests
+
+      # The db fixtures call pytest.skip when the database is unreachable, so a
+      # misconfigured service would produce a green tick over a suite that
+      # never ran. Prove the connection first, and fail here if it is absent.
+      - name: Verify the test database is reachable
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://jobportal:jobportal@localhost:5432/jobportal_test
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          url = os.environ["TEST_DATABASE_URL"]
+          with create_engine(url).connect() as connection:
+              connection.execute(text("SELECT 1"))
+          print(f"Connected to {url.rsplit('/', 1)[-1]}")
+          PY
+
+      - name: Test
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://jobportal:jobportal@localhost:5432/jobportal_test
+        # -p no:randomly is not in use, so ordering is stable; --strict-markers
+        # and --strict-config already come from pyproject.
+        run: pytest -q
+
+  frontend:
+    name: Frontend — lint, types, tests, build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # `ci` not `install`: installs the lockfile exactly, so CI can never pass
+      # against a dependency tree that differs from the one committed.
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npx vite build
+
+  docker:
+    name: Docker — build and smoke test the stack
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The assessment's headline requirement is that a fresh clone comes up on
+      # this one command with no .env. This job is that claim, tested.
+      - name: Build and start the stack
+        run: docker compose up -d --build
+
+      - name: Wait for every service to report healthy
+        run: |
+          for attempt in $(seq 1 60); do
+            unhealthy=$(docker compose ps --format '{{.Service}} {{.Health}}' \
+              | grep -v ' healthy$' || true)
+            if [ -z "$unhealthy" ]; then
+              echo "All services healthy."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Services did not become healthy in time:" >&2
+          docker compose ps >&2
+          docker compose logs >&2
+          exit 1
+
+      - name: Smoke test the API and the UI
+        run: |
+          set -euo pipefail
+
+          echo "--- backend liveness"
+          curl -fsS http://localhost:8000/health > /dev/null
+
+          echo "--- UI is served"
+          curl -fsS http://localhost:5173/ > /dev/null
+
+          echo "--- API reachable through the frontend's nginx proxy"
+          curl -fsS http://localhost:5173/api/v1/jobs > /dev/null
+
+          echo "--- seeded credentials from the README actually work"
+          curl -fsS -X POST http://localhost:5173/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"admin@test.com","password":"Admin@1234"}' \
+            | grep -q access_token
+
+          curl -fsS -X POST http://localhost:5173/api/v1/auth/login \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"user@test.com","password":"User@1234"}' \
+            | grep -q access_token
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

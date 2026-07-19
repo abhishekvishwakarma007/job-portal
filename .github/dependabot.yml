@@ -1,0 +1,41 @@
+# Dependency updates open as pull requests, which means CI runs against them.
+# An update that breaks the suite is then a red tick on a PR rather than a
+# surprise on the next clean install.
+
+version: 2
+
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # One PR per ecosystem rather than per package: a stream of individual
+    # bumps is noise nobody reviews, which defeats the point.
+    groups:
+      backend-dependencies:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      frontend-dependencies:
+        patterns: ['*']
+
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  # Pinned action versions go stale too, and a stale action is the one that
+  # starts failing when GitHub retires a runner image.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
