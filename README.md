@@ -10,11 +10,13 @@ browse open roles and apply with a cover letter.
 
 Two roles, one workflow:
 
-- **HR** — post roles, publish them or keep them as drafts, edit and delete
-  their own postings, review applicants, and move each application through a
-  pipeline (Submitted → Under review → Accepted / Rejected).
-- **Candidate** — browse and search published roles, apply once per role with a
-  cover letter, and track the status of every application.
+- **HR** — post roles under their company, publish them or keep them as
+  drafts, edit and delete their own postings, review applicants, see a ranked
+  shortlist for each posting, message applicants, and move each application
+  through a pipeline (Submitted → Under review → Accepted / Rejected).
+- **Candidate** — browse, search and filter published roles, apply once per
+  role with a cover letter, keep a profile that improves their ranking, track
+  every application, and read invites from hiring teams.
 
 Authorisation is enforced on every endpoint by the API, not by hiding buttons
 in the UI.
@@ -89,10 +91,27 @@ database as well.
 
 Seeded automatically on first boot. Both are development-only.
 
+**The two the brief publishes — start with these:**
+
 | Role | Email | Password |
 | --- | --- | --- |
 | **HR** | `admin@test.com` | `Admin@1234` |
 | **Candidate** | `user@test.com` | `User@1234` |
+
+**Additional demo accounts**, so the app is populated rather than empty. Each
+HR account represents one employer and owns only that company's postings.
+
+| Role | Email | Password | Represents |
+| --- | --- | --- | --- |
+| HR | `hr.kestrel@test.com` | `Kestrel@1234` | Kestrel Studio |
+| HR | `hr.bluepeak@test.com` | `Bluepeak@1234` | Bluepeak Analytics |
+| Candidate | `ravi@test.com` | `Ravi@1234` | Backend engineer |
+| Candidate | `lena@test.com` | `Lena@1234` | Product designer |
+| Candidate | `amara@test.com` | `Amara@1234` | Analytics student |
+
+`admin@test.com` represents **Northwind Labs**. Every candidate arrives with a
+filled-in profile, and five applications are already in the pipeline across
+three statuses.
 
 You can also register a new account of either role from the UI.
 
@@ -102,31 +121,47 @@ You can also register a new account of either role from the UI.
 
 **As HR** — `admin@test.com` / `Admin@1234`
 
-1. Sign in; you land on **My postings**.
-2. **Post a role**: title, location, employment type, description. Leave
-   *Publish immediately* ticked, or untick it to save a draft.
+1. Sign in; you land on **My postings**, an expandable list of your own roles.
+2. **Post a role**: title, company, location, employment type, description.
+   Leave *Publish immediately* ticked, or untick it to save a draft.
 3. A draft carries a **Draft** badge and is invisible to everyone else,
    including at its direct URL.
-4. **View applicants** on a posting to see each candidate, their cover letter,
-   and a dropdown to move them through the pipeline.
-5. **Edit**, **Publish / Unpublish**, or **Delete** any posting you own.
+4. **Expand a posting** to reveal its actions and its **Top matches** — the
+   best-fitting applicants, each with a percentage and the terms that placed
+   them. Ranking reads both the cover letter and the candidate's profile, with
+   listed skills weighted higher.
+5. **Contact applicant** writes them a message. Nothing is emailed; it arrives
+   in the candidate's **Invites**.
+6. **All applicants** shows the full pipeline for a posting, with a dropdown to
+   move each person through it.
+7. **Edit**, **Publish / Unpublish**, or **Delete** any posting you own.
    Deleting warns that its applications go with it.
 
 **As Candidate** — `user@test.com` / `User@1234`
 
 1. Sign in; you land on **Browse jobs**.
-2. Search by title. The list is newest-first and shows published roles only.
-3. Open a role and **Submit application** with a cover letter.
+2. Filter by **title, company, location, or employment type** — they combine,
+   and the list is newest-first with published roles only.
+3. **Expand a role** to read the full description and apply without leaving the
+   list.
 4. Applying to the same role again is refused; the UI reports it as already
    submitted.
-5. **My applications** lists everything you applied to with its current status,
-   which updates as HR moves it along.
+5. **Profile** holds your basic details, summary, key skills, career
+   preferences, employment and education. Each section saves on its own, and
+   your skills feed the shortlist HR sees.
+6. **My applications** lists everything you applied to with its current status.
+7. **Invites** shows messages from hiring teams, as cards naming the role and
+   company.
 
 **Worth trying**
 
 - Signed in as the candidate, visit `/manage` — the HR area is not available.
 - Copy a draft posting's URL as HR, then open it as the candidate: it returns
   404, not 403, so the draft's existence is never revealed.
+- Sign in as `hr.kestrel@test.com` — you see only Kestrel Studio's postings and
+  cannot reach Northwind's pipeline, even by id.
+- Add a skill to your profile that appears in a posting, then look at that
+  posting's Top matches as HR: your score moves.
 
 ---
 
@@ -139,6 +174,7 @@ You can also register a new account of either role from the UI.
 | Database | Postgres 16 | Native enums, UUIDs, functional unique indexes |
 | Auth | PyJWT (HS256), bcrypt | Stateless access tokens, per-password salting |
 | Frontend | React 18, TypeScript, Vite | Strict typing, fast builds |
+| Styling | Tailwind CSS + a small hand-written system | Utilities for new work, existing styles untouched (preflight off) |
 | Routing | React Router 6 | — |
 | Serving | nginx (unprivileged image) | Static assets plus API proxy, no Node in production |
 | Tests | pytest, Vitest, Testing Library | Real Postgres, no mocked database |
@@ -169,7 +205,16 @@ Interactive documentation at **http://localhost:8000/docs**.
 | `GET` | `/api/v1/applications/mine` | Candidate |
 | `GET` | `/api/v1/applications/{id}` | Its author, or the job's owner |
 | `PATCH` | `/api/v1/applications/{id}` | HR, owner of the job |
+| `POST` | `/api/v1/applications/{id}/contact` | HR, owner of the job |
+| `GET` | `/api/v1/jobs/{id}/recommendations` | HR, owner of the job |
+| `GET` | `/api/v1/profile/me` | Candidate |
+| `PATCH` | `/api/v1/profile/me` | Candidate |
+| `GET` | `/api/v1/notifications/mine` | Authenticated |
+| `PATCH` | `/api/v1/notifications/{id}/read` | Recipient only |
 | `GET` | `/health` | Public |
+
+Browse accepts `search` (title), `company`, `location`, and `employment_type`
+filters, which combine with AND, plus `limit` and `offset`.
 
 ---
 
@@ -216,6 +261,16 @@ indistinguishable.
 
 **Mass assignment.** Request schemas name only client-writable fields. A body
 carrying `is_active`, `status`, or `created_by_id` has it ignored, not honoured.
+
+**Messaging cannot be misaddressed.** The recipient of an HR message comes from
+the application, never the request body, so a message cannot be sent to someone
+who did not apply. Only the posting's owner may write to its applicants.
+
+**The match score is labelled.** The recommendation endpoint returns its
+`method` (`keyword-overlap`) in the payload, so no client can present a keyword
+count as an assessment of whether someone can do the job. The denominator is
+the posting's vocabulary, so padding a cover letter or profile cannot inflate a
+score — only covering more of what the posting asks for can.
 
 **XSS.** User-supplied text — job descriptions, cover letters — renders as
 text, never through `dangerouslySetInnerHTML`. nginx sets a CSP with no
@@ -283,9 +338,27 @@ Coverage concentrates on the boundaries that matter: cross-tenant 404s, every
 role gate, the duplicate-apply race at the database level, no-enumeration
 login, account lockout, and refresh-token replay detection.
 
-CI runs lint, type checks, and both suites on every push, plus a job that
-starts the whole stack with `docker compose up --build` and smoke tests it —
-including signing in with the credentials published above.
+**End-to-end suite.** `backend/tests_e2e` runs against a *running* stack over
+HTTP — no TestClient, no dependency overrides. A pass means the containers, the
+proxy, the migrations, and the seed all did their jobs, not merely that the
+Python functions agree with each other.
+
+```bash
+docker compose up -d --build
+cd backend && pytest tests_e2e -q
+```
+
+It covers the journey this README describes — sign in with the published
+credentials, post a role, apply, be refused a second time, advance the
+application, receive a message — plus properties only a real stack shows: the
+SPA fallback serving deep links, API 404s staying JSON rather than being
+swallowed by that fallback, and nginx's security headers arriving intact.
+
+These are excluded from the default `pytest` run, since they need a stack.
+
+CI runs lint, type checks, and both unit suites on every push, plus a job that
+starts the whole stack with `docker compose up --build`, waits for every
+service to report healthy, and then runs the end-to-end suite against it.
 
 ---
 
@@ -304,6 +377,11 @@ including signing in with the credentials published above.
 | Roles | HR and Candidate only; no super-admin tier |
 | Token cleanup | Expired refresh-token rows are not pruned by a background job |
 | Accessibility | Labels and keyboard paths covered; not screen-reader audited |
+| Applicant ranking | Keyword overlap only — no semantic matching or ML |
+| Messaging | In-app only; no email is sent, by design for a review environment |
+| Resume upload | Not implemented; profiles are structured text, no file storage |
+| Profile sections | Employment and education are free text, not structured rows |
+| New modules | Profile, notification and recommendation services are covered by the end-to-end suite but have no unit tests yet |
 
 ---
 
