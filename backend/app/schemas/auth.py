@@ -106,9 +106,21 @@ class UserRead(BaseModel):
 
 
 class Token(BaseModel):
-    """A successful login response."""
+    """A successful login or refresh response.
+
+    The refresh token travels in the body rather than a cookie, matching how
+    the access token is handled. The trade-off — and why a production
+    deployment should prefer an httpOnly cookie — is recorded in the README.
+    """
 
     access_token: str
+    refresh_token: str
     # S105 suppressed: the literal is the OAuth 2.0 token type name, not a
     # credential.
     token_type: Literal["bearer"] = "bearer"  # noqa: S105
+
+
+class RefreshRequest(BaseModel):
+    """A request to exchange a refresh token for a new pair."""
+
+    refresh_token: str

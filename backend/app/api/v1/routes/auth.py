@@ -7,7 +7,7 @@ reused, without going through HTTP.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser
@@ -18,12 +18,24 @@ from app.core.rate_limit import (
 )
 from app.core.security import create_access_token
 from app.db.session import get_db
-from app.schemas.auth import LoginRequest, Token, UserCreate, UserRead
+from app.schemas.auth import (
+    LoginRequest,
+    RefreshRequest,
+    Token,
+    UserCreate,
+    UserRead,
+)
 from app.services.auth import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     authenticate_user,
     register_user,
+)
+from app.services.refresh_token import (
+    InvalidRefreshTokenError,
+    issue_refresh_token,
+    revoke_refresh_token,
+    rotate_refresh_token,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -134,7 +146,63 @@ def login(
     # window locked out of their own sign-ins by earlier typos.
     login_rate_limiter.reset(key)
 
-    return Token(access_token=create_access_token(user_id=user.id, role=user.role))
+    return Token(
+        access_token=create_access_token(user_id=user.id, role=user.role),
+        refresh_token=issue_refresh_token(db, user=user),
+    )
+
+
+@router.post("/refresh", response_model=Token, summary="Exchange a refresh token")
+def refresh(
+    payload: RefreshRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> Token:
+    """Spend a refresh token and return a fresh pair.
+
+    Not rate limited by caller address: a client with a valid token has already
+    proved possession, and the presented token being single-use is a far
+    tighter budget than any per-IP counter. Replaying a spent one revokes the
+    whole family rather than merely failing.
+    """
+    try:
+        user, new_refresh_token = rotate_refresh_token(
+            db, raw_token=payload.refresh_token
+        )
+    except InvalidRefreshTokenError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired refresh token",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
+
+    return Token(
+        access_token=create_access_token(user_id=user.id, role=user.role),
+        refresh_token=new_refresh_token,
+    )
+
+
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="End the session",
+)
+def logout(
+    payload: RefreshRequest,
+    db: Annotated[Session, Depends(get_db)],
+) -> Response:
+    """Revoke the presented refresh token.
+
+    Always 204, even for a token that was never issued or is already spent.
+    Logging out should succeed regardless, and a different answer would confirm
+    which tokens were real to anyone able to call this.
+
+    The access token is not revoked — it is stateless and expires on its own
+    within minutes. Revoking it would mean checking a blocklist on every
+    request, which is the cost this design exists to avoid.
+    """
+    revoke_refresh_token(db, raw_token=payload.refresh_token)
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/me", response_model=UserRead, summary="The authenticated user")
