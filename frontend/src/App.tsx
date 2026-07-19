@@ -3,8 +3,13 @@ import { Link, Route, Routes, useNavigate } from 'react-router-dom'
 import { AuthProvider } from './auth/AuthProvider'
 import ProtectedRoute from './auth/ProtectedRoute'
 import { useAuth } from './auth/useAuth'
+import JobApplicantsPage from './pages/JobApplicantsPage'
+import JobDetailPage from './pages/JobDetailPage'
+import JobFormPage from './pages/JobFormPage'
 import JobsPage from './pages/JobsPage'
 import LoginPage from './pages/LoginPage'
+import ManageJobsPage from './pages/ManageJobsPage'
+import MyApplicationsPage from './pages/MyApplicationsPage'
 import NotFoundPage from './pages/NotFoundPage'
 import RegisterPage from './pages/RegisterPage'
 
@@ -71,16 +76,6 @@ function Navigation() {
   )
 }
 
-/** Placeholder until the jobs and applications UI slice lands. */
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="card empty">
-      <h1>{title}</h1>
-      <p className="muted">This screen arrives in the next slice.</p>
-    </div>
-  )
-}
-
 export default function App() {
   return (
     <AuthProvider>
@@ -90,6 +85,7 @@ export default function App() {
         <main className="main">
           <Routes>
             <Route path="/" element={<JobsPage />} />
+            <Route path="/jobs/:jobId" element={<JobDetailPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
 
@@ -97,7 +93,7 @@ export default function App() {
               path="/applications"
               element={
                 <ProtectedRoute role="CANDIDATE">
-                  <ComingSoon title="My applications" />
+                  <MyApplicationsPage />
                 </ProtectedRoute>
               }
             />
@@ -106,7 +102,33 @@ export default function App() {
               path="/manage"
               element={
                 <ProtectedRoute role="HR">
-                  <ComingSoon title="My postings" />
+                  <ManageJobsPage />
+                </ProtectedRoute>
+              }
+            />
+            {/* Declared before /manage/:jobId/edit so the literal "new" wins
+                the match rather than being read as a job id. */}
+            <Route
+              path="/manage/new"
+              element={
+                <ProtectedRoute role="HR">
+                  <JobFormPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/manage/:jobId/edit"
+              element={
+                <ProtectedRoute role="HR">
+                  <JobFormPage />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/manage/:jobId/applicants"
+              element={
+                <ProtectedRoute role="HR">
+                  <JobApplicantsPage />
                 </ProtectedRoute>
               }
             />

@@ -1,89 +1,75 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 
-import { ApiError, request } from '../lib/api'
+import AsyncBoundary from '../components/AsyncBoundary'
+import { useApiResource } from '../hooks/useApiResource'
 import { EMPLOYMENT_TYPE_LABELS, type Job, type Page } from '../types'
 
-/**
- * Public job browse.
- *
- * Every fetch has three renderable outcomes — loading, failed, empty — and all
- * three are handled explicitly. A page that only renders the success case shows
- * a blank screen when the API is down, which reads as a broken build rather
- * than a backend that is not up yet.
- */
+/** Public job browse with title search. */
 export default function JobsPage() {
-  const [jobs, setJobs] = useState<Job[]>([])
-  const [total, setTotal] = useState(0)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [searchInput, setSearchInput] = useState('')
+  const [search, setSearch] = useState('')
 
+  // Debounced so typing does not fire a request per keystroke.
   useEffect(() => {
-    // Aborted on unmount so a slow response cannot call setState afterwards.
-    const controller = new AbortController()
+    const timer = setTimeout(() => setSearch(searchInput.trim()), 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
 
-    async function load() {
-      setIsLoading(true)
-      setError(null)
+  const { data, isLoading, error } = useApiResource<Page<Job>>('/jobs', {
+    search: search || undefined,
+  })
 
-      try {
-        const page = await request<Page<Job>>('/jobs', {
-          signal: controller.signal,
-        })
-        setJobs(page.items)
-        setTotal(page.total)
-      } catch (cause) {
-        if (cause instanceof DOMException && cause.name === 'AbortError') return
-        setError(
-          cause instanceof ApiError
-            ? cause.message
-            : 'Could not load jobs. Please try again.',
-        )
-      } finally {
-        if (!controller.signal.aborted) setIsLoading(false)
-      }
-    }
-
-    void load()
-    return () => controller.abort()
-  }, [])
+  const jobs = data?.items ?? []
 
   return (
     <section className="stack">
       <div className="row row--between">
         <h1>Open roles</h1>
-        {!isLoading && !error && (
+        {data && !isLoading && (
           <p className="muted">
-            {total} {total === 1 ? 'role' : 'roles'}
+            {data.total} {data.total === 1 ? 'role' : 'roles'}
           </p>
         )}
       </div>
 
-      {isLoading && <p className="muted">Loading roles…</p>}
+      <div className="card">
+        <label htmlFor="search" className="sr-only">
+          Search roles by title
+        </label>
+        <input
+          id="search"
+          type="search"
+          placeholder="Search by title…"
+          value={searchInput}
+          onChange={(event) => setSearchInput(event.target.value)}
+        />
+      </div>
 
-      {error && (
-        <p className="alert alert--error" role="alert">
-          {error}
-        </p>
-      )}
-
-      {!isLoading && !error && jobs.length === 0 && (
-        <div className="card empty">
-          <p>No roles have been posted yet.</p>
-        </div>
-      )}
-
-      {jobs.length > 0 && (
+      <AsyncBoundary
+        isLoading={isLoading}
+        error={error}
+        isEmpty={jobs.length === 0}
+        emptyMessage={
+          search
+            ? `No roles match “${search}”.`
+            : 'No roles have been posted yet.'
+        }
+      >
         <ul className="job-list">
           {jobs.map((job) => (
             <li key={job.id} className="card">
-              <h2 className="job-card__title">{job.title}</h2>
+              <h2 className="job-card__title">
+                <Link to={`/jobs/${job.id}`}>{job.title}</Link>
+              </h2>
               <p className="muted">
-                {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employment_type]}
+                {job.location} · {EMPLOYMENT_TYPE_LABELS[job.employment_type]} ·
+                posted by {job.created_by.full_name}
               </p>
             </li>
           ))}
         </ul>
-      )}
+      </AsyncBoundary>
     </section>
   )
 }
