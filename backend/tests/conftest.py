@@ -12,6 +12,8 @@ from pathlib import Path
 
 import pytest
 
+from app.core.rate_limit import login_rate_limiter, register_rate_limiter
+
 # Re-exported so DB-backed tests can request them without importing a helper
 # module directly. pytest only discovers fixtures declared in conftest.
 from tests.db_fixtures import db_engine, db_session  # noqa: F401
@@ -46,6 +48,22 @@ def clean_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     for var in _MANAGED_VARS:
         monkeypatch.delenv(var, raising=False)
     yield
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiters() -> Iterator[None]:
+    """Give every test a full rate-limit budget.
+
+    The limiters are module-level singletons keyed by client address, and every
+    TestClient request arrives from the same "testclient" host. Without this,
+    one test's failed-login attempts spend the budget for every test that runs
+    after it — which showed up as unrelated login tests returning 429.
+    """
+    login_rate_limiter.clear()
+    register_rate_limiter.clear()
+    yield
+    login_rate_limiter.clear()
+    register_rate_limiter.clear()
 
 
 @pytest.fixture

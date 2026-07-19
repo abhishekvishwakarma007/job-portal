@@ -7,10 +7,15 @@ reused, without going through HTTP.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser
+from app.core.rate_limit import (
+    SlidingWindowRateLimiter,
+    login_rate_limiter,
+    register_rate_limiter,
+)
 from app.core.security import create_access_token
 from app.db.session import get_db
 from app.schemas.auth import LoginRequest, Token, UserCreate, UserRead
@@ -30,6 +35,35 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _INVALID_CREDENTIALS_DETAIL = "Incorrect email or password"
 
 
+def _client_key(request: Request) -> str:
+    """Identify the caller for rate-limiting purposes.
+
+    The direct peer address, deliberately: X-Forwarded-For is attacker-supplied
+    unless a trusted proxy overwrites it, so honouring it here would let anyone
+    reset their own budget by inventing a header. A deployment behind a real
+    load balancer should read the header the balancer sets and is documented as
+    a limitation.
+    """
+    return request.client.host if request.client else "unknown"
+
+
+def _enforce_rate_limit(limiter: SlidingWindowRateLimiter, request: Request) -> str:
+    """Consume one unit of the caller's budget, or raise 429."""
+    key = _client_key(request)
+    result = limiter.check(key)
+
+    if not result.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many attempts. Please try again later.",
+            # Retry-After is what lets a well-behaved client back off correctly
+            # instead of hammering and staying blocked.
+            headers={"Retry-After": str(result.retry_after)},
+        )
+
+    return key
+
+
 @router.post(
     "/register",
     response_model=UserRead,
@@ -38,14 +72,19 @@ _INVALID_CREDENTIALS_DETAIL = "Incorrect email or password"
 )
 def register(
     payload: UserCreate,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
 ) -> UserRead:
     """Register a new HR or candidate account.
 
     Returns 409 when the address is taken. Registration necessarily reveals
     whether an address exists — there is no way to confirm a new account
-    without it — which is why login is careful not to.
+    without it — which is why login is careful not to, and why this endpoint
+    is rate limited: the 409 is an enumeration oracle if it can be called
+    without limit.
     """
+    _enforce_rate_limit(register_rate_limiter, request)
+
     try:
         user = register_user(
             db,
@@ -70,9 +109,18 @@ def register(
 )
 def login(
     payload: LoginRequest,
+    request: Request,
     db: Annotated[Session, Depends(get_db)],
 ) -> Token:
-    """Issue an access token for valid credentials."""
+    """Issue an access token for valid credentials.
+
+    Two independent controls, because they stop different attacks. The rate
+    limit is per caller and blunts spraying one password across many accounts;
+    the lockout is per account and blunts guessing many passwords against one.
+    Neither substitutes for the other.
+    """
+    key = _enforce_rate_limit(login_rate_limiter, request)
+
     try:
         user = authenticate_user(db, email=payload.email, password=payload.password)
     except InvalidCredentialsError as exc:
@@ -81,6 +129,10 @@ def login(
             detail=_INVALID_CREDENTIALS_DETAIL,
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
+
+    # A caller who proved they own an account should not spend the rest of the
+    # window locked out of their own sign-ins by earlier typos.
+    login_rate_limiter.reset(key)
 
     return Token(access_token=create_access_token(user_id=user.id, role=user.role))
 
