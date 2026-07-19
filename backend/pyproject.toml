@@ -1,0 +1,50 @@
+[project]
+name = "jobportal-backend"
+version = "0.1.0"
+description = "JobPortal API — FastAPI backend"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q --strict-markers --strict-config"
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+disallow_any_generics = true
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+# Test helpers monkeypatch third-party internals where precise types add noise
+# without adding safety.
+module = "tests.*"
+disallow_untyped_decorators = false
+
+[tool.ruff]
+line-length = 90
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "S",    # bandit — security lint
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "RUF",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Asserts are the point of a test file; bandit's S101 is noise here.
+"tests/*" = ["S101"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
