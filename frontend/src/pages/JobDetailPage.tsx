@@ -60,7 +60,7 @@ export default function JobDetailPage() {
   return (
     <section className="stack">
       <p>
-        <Link to="/">← Back to all roles</Link>
+        <Link to="/jobs">← Back to all roles</Link>
       </p>
 
       <AsyncBoundary isLoading={isLoading} error={error}>

@@ -6,7 +6,7 @@ export default function NotFoundPage() {
     <div className="card empty">
       <h1>Page not found</h1>
       <p className="muted">That page does not exist.</p>
-      <Link to="/" className="button">
+      <Link to="/jobs" className="button">
         Browse jobs
       </Link>
     </div>
