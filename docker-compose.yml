@@ -61,6 +61,11 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://jobportal:jobportal@db:5432/jobportal}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # Everything from a browser reaches this service through the frontend's
+      # nginx, so without naming it as trusted the per-caller rate limit
+      # becomes one bucket shared by every user. Names the compose service;
+      # a real deployment sets its load balancer's address.
+      TRUSTED_PROXY_HOSTS: ${TRUSTED_PROXY_HOSTS:-frontend}
     ports:
       # Overridable for the same reason as the database port.
       - "${BACKEND_PORT:-8000}:8000"

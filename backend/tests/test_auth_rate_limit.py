@@ -119,3 +119,107 @@ def test_registration_is_rate_limited(client: TestClient) -> None:
         )
 
     assert 429 in statuses
+
+
+# --------------------------------------------------------------------------
+# Identifying the real caller behind a proxy
+# --------------------------------------------------------------------------
+
+
+def test_forwarded_header_is_ignored_from_an_untrusted_peer(
+    client: TestClient, user: User
+) -> None:
+    """A forged header must not buy a fresh budget.
+
+    Honouring X-Forwarded-For from anyone would make the limit trivially
+    bypassable: invent a new value per request and the budget never runs out.
+    """
+    for _ in range(12):
+        response = client.post(
+            LOGIN_URL,
+            json={"email": EMAIL, "password": WRONG_PASSWORD},
+            headers={"X-Forwarded-For": f"10.0.0.{_}"},
+        )
+
+    assert response.status_code == 429
+
+
+def test_callers_behind_a_trusted_proxy_get_separate_budgets(
+    valid_env: None, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The decisive property.
+
+    Every browser request reaches the API through nginx, so without this they
+    all share one bucket and ten failed logins from one person 429 everybody
+    else — on a correct password. Verified before the fix: it did exactly that.
+    """
+    monkeypatch.setenv("TRUSTED_PROXY_HOSTS", "testclient")
+    get_settings.cache_clear()
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    register_user(
+        db_session,
+        email=EMAIL,
+        password=PASSWORD,
+        full_name="Dana Reyes",
+        role=UserRole.HR,
+    )
+
+    with TestClient(app) as proxied:
+        # One caller burns their whole budget.
+        for _ in range(12):
+            noisy = proxied.post(
+                LOGIN_URL,
+                json={"email": EMAIL, "password": WRONG_PASSWORD},
+                headers={"X-Forwarded-For": "203.0.113.9"},
+            )
+        assert noisy.status_code == 429
+
+        # A different caller through the same proxy is unaffected.
+        quiet = proxied.post(
+            LOGIN_URL,
+            json={"email": EMAIL, "password": PASSWORD},
+            headers={"X-Forwarded-For": "198.51.100.4"},
+        )
+
+    app.dependency_overrides.clear()
+
+    assert quiet.status_code != 429
+
+
+def test_only_the_rightmost_forwarded_hop_is_believed(
+    valid_env: None, db_session: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A client can prepend hops; only what the proxy appended is real.
+
+    Taking the leftmost entry would restore the bypass the trust check exists
+    to prevent — a caller would simply vary the prefix each request.
+    """
+    monkeypatch.setenv("TRUSTED_PROXY_HOSTS", "testclient")
+    get_settings.cache_clear()
+
+    app = create_app()
+    app.dependency_overrides[get_db] = lambda: db_session
+
+    register_user(
+        db_session,
+        email=EMAIL,
+        password=PASSWORD,
+        full_name="Dana Reyes",
+        role=UserRole.HR,
+    )
+
+    with TestClient(app) as proxied:
+        # The forged prefix changes every time; the real hop does not.
+        for index in range(12):
+            response = proxied.post(
+                LOGIN_URL,
+                json={"email": EMAIL, "password": WRONG_PASSWORD},
+                headers={"X-Forwarded-For": f"10.9.9.{index}, 203.0.113.9"},
+            )
+
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 429

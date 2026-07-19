@@ -25,6 +25,10 @@ PLACEHOLDER_SECRET_MARKERS = ("changeme", "secret-key", "your-secret", "example"
 ALLOWED_DB_SCHEMES = ("postgresql://", "postgresql+psycopg://", "postgresql+asyncpg://")
 
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173"]
+
+# Hosts whose X-Forwarded-For we are willing to believe. Empty by default:
+# the header is attacker-supplied unless a proxy we control overwrites it.
+DEFAULT_TRUSTED_PROXY_HOSTS: list[str] = []
 DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES = 15
 
 # Long enough that a person is not signed out mid-week, short enough that a
@@ -70,6 +74,12 @@ class Settings(BaseSettings):
     cors_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: list(DEFAULT_CORS_ORIGINS)
     )
+    # Reverse proxies permitted to identify the real client. Everything behind
+    # nginx arrives from one address, so without this the per-caller rate limit
+    # degrades into a single bucket shared by every user.
+    trusted_proxy_hosts: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(DEFAULT_TRUSTED_PROXY_HOSTS)
+    )
 
     @field_validator("secret_key")
     @classmethod
@@ -101,12 +111,12 @@ class Settings(BaseSettings):
 
         return value
 
-    @field_validator("cors_origins", mode="before")
+    @field_validator("cors_origins", "trusted_proxy_hosts", mode="before")
     @classmethod
-    def _split_cors_origins(cls, value: object) -> object:
+    def _split_comma_separated(cls, value: object) -> object:
         """Accept `a.com, b.com` from the environment and split it into a list."""
         if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
+            return [item.strip() for item in value.split(",") if item.strip()]
 
         return value
 

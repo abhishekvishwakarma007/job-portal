@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser
+from app.core.config import get_settings
 from app.core.rate_limit import (
     SlidingWindowRateLimiter,
     login_rate_limiter,
@@ -50,13 +51,33 @@ _INVALID_CREDENTIALS_DETAIL = "Incorrect email or password"
 def _client_key(request: Request) -> str:
     """Identify the caller for rate-limiting purposes.
 
-    The direct peer address, deliberately: X-Forwarded-For is attacker-supplied
-    unless a trusted proxy overwrites it, so honouring it here would let anyone
-    reset their own budget by inventing a header. A deployment behind a real
-    load balancer should read the header the balancer sets and is documented as
-    a limitation.
+    X-Forwarded-For is honoured only when the direct peer is a configured
+    trusted proxy. Trusting it unconditionally would let anyone reset their own
+    budget by inventing a header; refusing it entirely is just as broken behind
+    a proxy, because every request then arrives from one address and the
+    per-caller limit collapses into a single bucket shared by every user — ten
+    failed logins from one person would 429 everybody else, including on a
+    correct password.
+
+    The rightmost entry is taken, not the leftmost. A client can prepend any
+    number of forged hops; only the entries the trusted proxy itself appended
+    are believable, and the last one is the address it actually observed.
     """
-    return request.client.host if request.client else "unknown"
+    peer = request.client.host if request.client else None
+
+    if peer is None:
+        # No peer address at all. Its own bucket, so these cannot spend a real
+        # caller's budget.
+        return "unknown"
+
+    if peer in get_settings().trusted_proxy_hosts:
+        forwarded = request.headers.get("X-Forwarded-For", "")
+        hops = [hop.strip() for hop in forwarded.split(",") if hop.strip()]
+
+        if hops:
+            return hops[-1]
+
+    return peer
 
 
 def _enforce_rate_limit(limiter: SlidingWindowRateLimiter, request: Request) -> str:

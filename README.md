@@ -325,9 +325,14 @@ state (Redis) — a fourth service this stack does not otherwise need. The
 durable control against a targeted attack is the database-backed lockout, which
 holds regardless of process count.
 
-**Rate limiting keys on the direct peer address**, not `X-Forwarded-For`: that
-header is attacker-supplied unless a trusted proxy overwrites it. Behind a real
-load balancer this needs to read whatever the balancer sets.
+**Rate limiting keys on the real caller, via a trusted proxy.**
+`X-Forwarded-For` is honoured only when the direct peer is listed in
+`TRUSTED_PROXY_HOSTS`, and the *rightmost* entry is taken — a client can
+prepend any number of forged hops, so only what the trusted proxy itself
+appended is believable. Trusting the header unconditionally would let anyone
+reset their own budget by inventing one; refusing it entirely is equally broken
+behind a proxy, because every request then arrives from one address and ten
+failed logins from one person would 429 everybody else, on a correct password.
 
 **Registration reveals whether an address exists** — a 409 on a duplicate.
 There is no way to confirm a new account without it, so the endpoint is rate
@@ -404,7 +409,7 @@ service to report healthy, and then runs the end-to-end suite against it.
 | --- | --- |
 | Token storage | `localStorage` rather than httpOnly cookies — see Trade-offs |
 | Rate limiting | Per-process; not shared across replicas |
-| Proxy headers | `X-Forwarded-For` not trusted; needs configuration behind a real load balancer |
+| Proxy headers | `X-Forwarded-For` trusted only from `TRUSTED_PROXY_HOSTS`; a different topology needs that set to its own balancer |
 | Search | Title only, `ILIKE` — no full-text index or relevance ranking |
 | Pagination | Offset-based; fine at this scale, drifts under concurrent inserts |
 | Email | No verification, password reset, or notifications |
