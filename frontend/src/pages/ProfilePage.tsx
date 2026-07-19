@@ -31,6 +31,64 @@ const LABEL_CLASS =
 const EMPLOYMENT_PLACEHOLDER =
   'Platform Engineer, Northwind Labs, 2022-present\nBackend Developer, Acme, 2019-2022'
 
+interface SectionProps {
+  id: string
+  title: string
+  hint?: string
+  fields: (keyof Draft)[]
+  savingSection: string | null
+  savedSection: string | null
+  onSave: (id: string, fields: (keyof Draft)[]) => void
+  children: ReactNode
+}
+
+/**
+ * One savable block of the profile.
+ *
+ * Declared at module scope, which is load-bearing rather than stylistic. Nested
+ * inside ProfilePage it was redefined on every render, so React saw a new
+ * component type each time, unmounted the subtree, and remounted it — the
+ * focused input was destroyed after every single keystroke. Typing a name one
+ * character at a time is exactly how that surfaces.
+ */
+function Section({
+  id,
+  title,
+  hint,
+  fields,
+  savingSection,
+  savedSection,
+  onSave,
+  children,
+}: SectionProps) {
+  return (
+    <section className="rounded-xl border border-[color:var(--border)] bg-white p-5 shadow-sm">
+      <div className="mb-3">
+        <h2 className="m-0 text-base font-semibold text-slate-900">{title}</h2>
+        {hint && (
+          <p className="mt-1 text-xs text-[color:var(--text-muted)]">{hint}</p>
+        )}
+      </div>
+
+      {children}
+
+      <div className="mt-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => onSave(id, fields)}
+          disabled={savingSection === id}
+          className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+        >
+          {savingSection === id ? 'Saving...' : 'Save'}
+        </button>
+        {savedSection === id && (
+          <span className="text-sm font-medium text-emerald-700">Saved</span>
+        )}
+      </div>
+    </section>
+  )
+}
+
 /**
  * The candidate profile, in the sections a job site asks for.
  *
@@ -94,46 +152,8 @@ export default function ProfilePage() {
     }
   }
 
-  function Section({
-    id,
-    title,
-    hint,
-    fields,
-    children,
-  }: {
-    id: string
-    title: string
-    hint?: string
-    fields: (keyof Draft)[]
-    children: ReactNode
-  }) {
-    return (
-      <section className="rounded-xl border border-[color:var(--border)] bg-white p-5 shadow-sm">
-        <div className="mb-3">
-          <h2 className="m-0 text-base font-semibold text-slate-900">{title}</h2>
-          {hint && (
-            <p className="mt-1 text-xs text-[color:var(--text-muted)]">{hint}</p>
-          )}
-        </div>
-
-        {children}
-
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => void saveSection(id, fields)}
-            disabled={savingSection === id}
-            className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-          >
-            {savingSection === id ? 'Saving...' : 'Save'}
-          </button>
-          {savedSection === id && (
-            <span className="text-sm font-medium text-emerald-700">Saved</span>
-          )}
-        </div>
-      </section>
-    )
-  }
+  // Threaded into every Section rather than repeated six times.
+  const sectionState = { savingSection, savedSection, onSave: saveSection }
 
   const skills = draft.key_skills
     .split(',')
@@ -162,6 +182,7 @@ export default function ProfilePage() {
       <AsyncBoundary isLoading={isLoading} error={error}>
         <div className="mt-5 grid gap-4">
           <Section
+            {...sectionState}
             id="basic"
             title="Basic details"
             fields={['headline', 'location', 'phone']}
@@ -207,6 +228,7 @@ export default function ProfilePage() {
           </Section>
 
           <Section
+            {...sectionState}
             id="summary"
             title="Profile summary"
             hint="Two or three sentences. Read when a hiring team ranks you."
@@ -221,6 +243,7 @@ export default function ProfilePage() {
           </Section>
 
           <Section
+            {...sectionState}
             id="skills"
             title="Key skills"
             hint="Comma separated. Weighted above prose when applicants are ranked."
@@ -247,6 +270,7 @@ export default function ProfilePage() {
           </Section>
 
           <Section
+            {...sectionState}
             id="preferences"
             title="Career preferences"
             fields={[
@@ -309,6 +333,7 @@ export default function ProfilePage() {
           </Section>
 
           <Section
+            {...sectionState}
             id="employment"
             title="Employment"
             hint="One role per line: title, company, dates."
@@ -323,6 +348,7 @@ export default function ProfilePage() {
           </Section>
 
           <Section
+            {...sectionState}
             id="education"
             title="Education"
             hint="One qualification per line."
