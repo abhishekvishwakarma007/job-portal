@@ -12,6 +12,10 @@ from pathlib import Path
 
 import pytest
 
+# Re-exported so DB-backed tests can request them without importing a helper
+# module directly. pytest only discovers fixtures declared in conftest.
+from tests.db_fixtures import db_engine, db_session  # noqa: F401
+
 # Minimum viable env for a Settings() instance to construct successfully.
 VALID_ENV: dict[str, str] = {
     "SECRET_KEY": "a" * 32,
