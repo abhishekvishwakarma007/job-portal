@@ -16,13 +16,32 @@ interface ManagedJobRowProps {
   onChanged: () => void
 }
 
+/** How many matches to rank. Enough to choose from, few enough to scan. */
+const SHORTLIST_SIZE = 5
+
 /**
- * One posting in the HR list: summary, and on expand the actions plus the
- * best-matching applicants.
+ * A default invite, so contacting someone is one click rather than a blank box.
+ *
+ * Written to be sendable as-is but obviously worth editing — a recruiter who
+ * sends the default verbatim has still said something reasonable, and one who
+ * personalises it has a starting point rather than a cursor blinking at them.
+ */
+function defaultInvite(job: Job): string {
+  return (
+    `Thanks for applying to ${job.title} at ${job.company}. ` +
+    `We have reviewed your application and would like to take it further.\n\n` +
+    `Are you available for an introductory call this week? ` +
+    `Reply with a couple of times that suit you and we will confirm.`
+  )
+}
+
+/**
+ * One posting in the HR list: summary, and on expand the actions plus a
+ * ranked, selectable table of the best-matching applicants.
  *
  * Recommendations load only when the row is opened. Fetching them for every
  * posting up front would run a ranking pass over every application on the page
- * to show three names the user may never look at.
+ * to show names the user may never look at.
  */
 export default function ManagedJobRow({
   job,
@@ -37,10 +56,10 @@ export default function ManagedJobRow({
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // Which applicant's message box is open, and what has been sent this session.
-  const [messagingId, setMessagingId] = useState<string | null>(null)
+  const [selected, setSelected] = useState<string[]>([])
+  const [isComposing, setIsComposing] = useState(false)
   const [message, setMessage] = useState('')
-  const [sentTo, setSentTo] = useState<string[]>([])
+  const [invited, setInvited] = useState<string[]>([])
 
   const panelId = `managed-panel-${job.id}`
 
@@ -53,7 +72,7 @@ export default function ManagedJobRow({
     try {
       const page = await request<RecommendationPage>(
         `/jobs/${job.id}/recommendations`,
-        { params: { limit: 3 } },
+        { params: { limit: SHORTLIST_SIZE } },
       )
       setRecommendations(page.items)
     } catch {
@@ -103,7 +122,31 @@ export default function ManagedJobRow({
     }
   }
 
-  async function sendMessage(applicationId: string) {
+  const selectable = (recommendations ?? []).filter(
+    (item) => !invited.includes(item.application.id),
+  )
+  const allSelected =
+    selectable.length > 0 && selected.length === selectable.length
+
+  function toggleAll() {
+    setSelected(allSelected ? [] : selectable.map((item) => item.application.id))
+  }
+
+  function toggleOne(applicationId: string) {
+    setSelected((current) =>
+      current.includes(applicationId)
+        ? current.filter((id) => id !== applicationId)
+        : [...current, applicationId],
+    )
+  }
+
+  function startComposing() {
+    setMessage(defaultInvite(job))
+    setIsComposing(true)
+    setError(null)
+  }
+
+  async function sendInvites() {
     if (!message.trim()) {
       setError('Write a message before sending.')
       return
@@ -111,21 +154,36 @@ export default function ManagedJobRow({
 
     setError(null)
     setBusy(true)
-    try {
-      await request(`/applications/${applicationId}/contact`, {
-        method: 'POST',
-        body: { message },
-      })
-      setSentTo((current) => [...current, applicationId])
-      setMessagingId(null)
-      setMessage('')
-    } catch (cause) {
-      setError(
-        cause instanceof ApiError ? cause.message : 'Could not send the message.',
-      )
-    } finally {
-      setBusy(false)
+
+    // Sent one at a time and tracked individually: if the fourth of five
+    // fails, the first three were genuinely delivered and saying otherwise
+    // would be a lie the recruiter acts on.
+    const delivered: string[] = []
+    const failed: string[] = []
+
+    for (const applicationId of selected) {
+      try {
+        await request(`/applications/${applicationId}/contact`, {
+          method: 'POST',
+          body: { message },
+        })
+        delivered.push(applicationId)
+      } catch {
+        failed.push(applicationId)
+      }
     }
+
+    setInvited((current) => [...current, ...delivered])
+    setSelected(failed)
+    setIsComposing(failed.length > 0)
+
+    if (failed.length > 0) {
+      setError(
+        `Sent ${delivered.length}, but ${failed.length} failed. The failed ones are still selected.`,
+      )
+    }
+
+    setBusy(false)
   }
 
   return (
@@ -218,13 +276,27 @@ export default function ManagedJobRow({
           </div>
 
           <div>
-            <h4 className="m-0 text-sm font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
-              Top matches
-            </h4>
-            <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-              Ranked by keyword overlap between the cover letter and this
-              posting — a shortlist aid, not an assessment.
-            </p>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h4 className="m-0 text-sm font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
+                  Top matches
+                </h4>
+                <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                  Ranked by keyword overlap between each candidate and this
+                  posting — a shortlist aid, not an assessment.
+                </p>
+              </div>
+
+              {selected.length > 0 && !isComposing && (
+                <button
+                  type="button"
+                  onClick={startComposing}
+                  className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                >
+                  Invite {selected.length} selected
+                </button>
+              )}
+            </div>
 
             {isLoadingRecommendations && (
               <p className="mt-3 text-sm text-[color:var(--text-muted)]">
@@ -238,96 +310,143 @@ export default function ManagedJobRow({
               </p>
             )}
 
-            <ul className="mt-3 grid list-none gap-3 pl-0">
-              {(recommendations ?? []).map(
-                ({ application, score, matched_terms }) => (
-                  <li
-                    key={application.id}
-                    className="rounded-lg border border-[color:var(--border)] bg-slate-50 p-4"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-semibold text-slate-900">
-                        {application.candidate.full_name}
-                      </span>
-                      <span className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-[color:var(--accent)]">
-                        {Math.round(score * 100)}% match
-                      </span>
-                    </div>
-
-                    <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-                      {application.candidate.email}
-                    </p>
-
-                    {matched_terms.length > 0 && (
-                      <p className="mt-2 flex flex-wrap gap-1">
-                        {matched_terms.slice(0, 8).map((term) => (
-                          <span
-                            key={term}
-                            className="rounded bg-white px-1.5 py-0.5 text-xs text-slate-600"
-                          >
-                            {term}
-                          </span>
-                        ))}
-                      </p>
-                    )}
-
-                    {sentTo.includes(application.id) ? (
-                      <p className="mt-3 text-sm font-medium text-emerald-700">
-                        Message sent — it appears in their notifications.
-                      </p>
-                    ) : messagingId === application.id ? (
-                      <div className="mt-3">
-                        <label
-                          htmlFor={`msg-${application.id}`}
-                          className="block text-xs font-semibold text-slate-700"
-                        >
-                          Message to {application.candidate.full_name}
-                        </label>
-                        <textarea
-                          id={`msg-${application.id}`}
-                          value={message}
-                          maxLength={2000}
-                          onChange={(event) => setMessage(event.target.value)}
-                          placeholder="We'd like to invite you to a first interview…"
-                          className="mt-1 min-h-20 w-full rounded-lg border border-[color:var(--border)] px-3 py-2 text-sm"
+            {(recommendations ?? []).length > 0 && (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[34rem] border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b border-[color:var(--border)] text-left text-xs uppercase tracking-wide text-[color:var(--text-muted)]">
+                      <th scope="col" className="w-10 py-2">
+                        <input
+                          type="checkbox"
+                          checked={allSelected}
+                          onChange={toggleAll}
+                          disabled={selectable.length === 0}
+                          aria-label="Select all candidates"
+                          className="h-4 w-4"
                         />
-                        <div className="mt-2 flex gap-2">
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => void sendMessage(application.id)}
-                            className="rounded-lg bg-[color:var(--accent)] px-3 py-1.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+                      </th>
+                      <th scope="col" className="py-2 pr-3">
+                        Candidate
+                      </th>
+                      <th scope="col" className="py-2 pr-3">
+                        Match
+                      </th>
+                      <th scope="col" className="py-2">
+                        Matched on
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {(recommendations ?? []).map(
+                      ({ application, score, matched_terms }) => {
+                        const isInvited = invited.includes(application.id)
+
+                        return (
+                          <tr
+                            key={application.id}
+                            className="border-b border-[color:var(--border)] align-top last:border-0"
                           >
-                            {busy ? 'Sending…' : 'Send'}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setMessagingId(null)
-                              setMessage('')
-                            }}
-                            className="rounded-lg border border-[color:var(--border)] bg-white px-3 py-1.5 text-sm font-semibold text-slate-700"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setMessagingId(application.id)
-                          setMessage('')
-                        }}
-                        className="mt-3 rounded-lg border border-[color:var(--border)] bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        Contact applicant
-                      </button>
+                            <td className="py-3">
+                              <input
+                                type="checkbox"
+                                checked={selected.includes(application.id)}
+                                onChange={() => toggleOne(application.id)}
+                                disabled={isInvited}
+                                aria-label={`Select ${application.candidate.full_name}`}
+                                className="h-4 w-4"
+                              />
+                            </td>
+
+                            <td className="py-3 pr-3">
+                              <span className="block font-semibold text-slate-900">
+                                {application.candidate.full_name}
+                              </span>
+                              <span className="block text-xs text-[color:var(--text-muted)]">
+                                {application.candidate.email}
+                              </span>
+                              {isInvited && (
+                                <span className="mt-1 inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
+                                  Invited
+                                </span>
+                              )}
+                            </td>
+
+                            <td className="py-3 pr-3">
+                              <span className="font-semibold text-[color:var(--accent)]">
+                                {Math.round(score * 100)}%
+                              </span>
+                            </td>
+
+                            <td className="py-3">
+                              <span className="flex flex-wrap gap-1">
+                                {matched_terms.slice(0, 6).map((term) => (
+                                  <span
+                                    key={term}
+                                    className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600"
+                                  >
+                                    {term}
+                                  </span>
+                                ))}
+                              </span>
+                            </td>
+                          </tr>
+                        )
+                      },
                     )}
-                  </li>
-                ),
-              )}
-            </ul>
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {isComposing && (
+              <div className="mt-4 rounded-lg border border-[color:var(--border)] bg-slate-50 p-4">
+                <label
+                  htmlFor={`invite-${job.id}`}
+                  className="block text-sm font-semibold text-slate-900"
+                >
+                  Invite {selected.length}{' '}
+                  {selected.length === 1 ? 'candidate' : 'candidates'}
+                </label>
+                <p className="mt-0.5 text-xs text-[color:var(--text-muted)]">
+                  Everyone selected receives the same message. Nothing is
+                  emailed — it appears in their invites.
+                </p>
+
+                <textarea
+                  id={`invite-${job.id}`}
+                  value={message}
+                  maxLength={2000}
+                  onChange={(event) => setMessage(event.target.value)}
+                  className="mt-2 min-h-32 w-full rounded-lg border border-[color:var(--border)] px-3 py-2 text-sm"
+                />
+
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={busy || selected.length === 0}
+                    onClick={() => void sendInvites()}
+                    className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+                  >
+                    {busy
+                      ? 'Sending…'
+                      : `Send ${selected.length} ${
+                          selected.length === 1 ? 'invite' : 'invites'
+                        }`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsComposing(false)
+                      setMessage('')
+                    }}
+                    className="rounded-lg border border-[color:var(--border)] bg-white px-4 py-2 text-sm font-semibold text-slate-700"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
