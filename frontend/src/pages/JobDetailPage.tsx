@@ -3,11 +3,10 @@ import { Link, useParams } from 'react-router-dom'
 
 import { useAuth } from '../auth/useAuth'
 import AsyncBoundary from '../components/AsyncBoundary'
+import { COVER_LETTER_MAX_LENGTH } from '../constants'
 import { useApiResource } from '../hooks/useApiResource'
 import { ApiError, request } from '../lib/api'
 import { EMPLOYMENT_TYPE_LABELS, type Application, type Job } from '../types'
-
-const COVER_LETTER_MAX_LENGTH = 5000
 
 /** Job detail, with the apply form for signed-in candidates. */
 export default function JobDetailPage() {

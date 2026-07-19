@@ -2,10 +2,9 @@ import { useState, type FormEvent } from 'react'
 import { Link } from 'react-router-dom'
 
 import { useAuth } from '../auth/useAuth'
+import { COVER_LETTER_MAX_LENGTH } from '../constants'
 import { ApiError, request } from '../lib/api'
 import { EMPLOYMENT_TYPE_LABELS, type Job } from '../types'
-
-const COVER_LETTER_MAX_LENGTH = 5000
 
 interface JobAccordionItemProps {
   job: Job

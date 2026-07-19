@@ -1,6 +1,11 @@
 import { useEffect, useState, type ReactNode } from 'react'
 
 import AsyncBoundary from '../components/AsyncBoundary'
+import {
+  HEADLINE_MAX_LENGTH,
+  PROFILE_TEXT_MAX_LENGTH,
+  SKILLS_MAX_LENGTH,
+} from '../constants'
 import { useApiResource } from '../hooks/useApiResource'
 import { ApiError, request } from '../lib/api'
 import { EMPLOYMENT_TYPE_LABELS, type CandidateProfile } from '../types'
@@ -196,6 +201,7 @@ export default function ProfilePage() {
                   id="headline"
                   className={INPUT_CLASS}
                   value={draft.headline}
+                  maxLength={HEADLINE_MAX_LENGTH}
                   onChange={(event) => set('headline', event.target.value)}
                   placeholder="Senior Platform Engineer"
                 />
@@ -237,6 +243,7 @@ export default function ProfilePage() {
             <textarea
               className={`${INPUT_CLASS} min-h-24`}
               value={draft.summary}
+              maxLength={PROFILE_TEXT_MAX_LENGTH}
               onChange={(event) => set('summary', event.target.value)}
               placeholder="What you do, what you are good at, and what you are looking for."
             />
@@ -252,6 +259,7 @@ export default function ProfilePage() {
             <input
               className={INPUT_CLASS}
               value={draft.key_skills}
+              maxLength={SKILLS_MAX_LENGTH}
               onChange={(event) => set('key_skills', event.target.value)}
               placeholder="Python, FastAPI, Postgres, Docker"
             />
@@ -288,6 +296,7 @@ export default function ProfilePage() {
                   id="preferred_role"
                   className={INPUT_CLASS}
                   value={draft.preferred_role}
+                  maxLength={HEADLINE_MAX_LENGTH}
                   onChange={(event) => set('preferred_role', event.target.value)}
                   placeholder="Backend Engineer"
                 />
@@ -342,6 +351,7 @@ export default function ProfilePage() {
             <textarea
               className={`${INPUT_CLASS} min-h-24`}
               value={draft.employment}
+              maxLength={PROFILE_TEXT_MAX_LENGTH}
               onChange={(event) => set('employment', event.target.value)}
               placeholder={EMPLOYMENT_PLACEHOLDER}
             />
@@ -357,6 +367,7 @@ export default function ProfilePage() {
             <textarea
               className={`${INPUT_CLASS} min-h-20`}
               value={draft.education}
+              maxLength={PROFILE_TEXT_MAX_LENGTH}
               onChange={(event) => set('education', event.target.value)}
               placeholder="B.Tech Computer Science, IIT Delhi, 2019"
             />

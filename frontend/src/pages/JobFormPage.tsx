@@ -2,14 +2,15 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import AsyncBoundary from '../components/AsyncBoundary'
+import {
+  COMPANY_MAX_LENGTH,
+  JOB_DESCRIPTION_MAX_LENGTH as DESCRIPTION_MAX_LENGTH,
+  JOB_TITLE_MAX_LENGTH as TITLE_MAX_LENGTH,
+  LOCATION_MAX_LENGTH,
+} from '../constants'
 import { useApiResource } from '../hooks/useApiResource'
 import { ApiError, request } from '../lib/api'
 import { EMPLOYMENT_TYPE_LABELS, type EmploymentType, type Job } from '../types'
-
-const TITLE_MAX_LENGTH = 200
-const COMPANY_MAX_LENGTH = 120
-const LOCATION_MAX_LENGTH = 120
-const DESCRIPTION_MAX_LENGTH = 20_000
 
 type FieldErrors = Partial<
   Record<'title' | 'company' | 'description' | 'location' | 'employment_type', string>

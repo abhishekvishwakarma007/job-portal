@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 
+import { SHORTLIST_SIZE } from '../constants'
 import { ApiError, request } from '../lib/api'
 import {
   EMPLOYMENT_TYPE_LABELS,
@@ -8,6 +9,8 @@ import {
   type RecommendationPage,
   type RecommendedApplicant,
 } from '../types'
+import InviteComposer from './InviteComposer'
+import ShortlistTable from './ShortlistTable'
 
 interface ManagedJobRowProps {
   job: Job
@@ -15,9 +18,6 @@ interface ManagedJobRowProps {
   onToggle: () => void
   onChanged: () => void
 }
-
-/** How many matches to rank. Enough to choose from, few enough to scan. */
-const SHORTLIST_SIZE = 5
 
 /**
  * A default invite, so contacting someone is one click rather than a blank box.
@@ -36,12 +36,17 @@ function defaultInvite(job: Job): string {
 }
 
 /**
- * One posting in the HR list: summary, and on expand the actions plus a
- * ranked, selectable table of the best-matching applicants.
+ * One posting in the HR list: summary, and on expand its actions plus a
+ * ranked, selectable shortlist.
  *
- * Recommendations load only when the row is opened. Fetching them for every
- * posting up front would run a ranking pass over every application on the page
- * to show names the user may never look at.
+ * The table and the message box are separate components — this one owns the
+ * state they share (what is selected, what has been invited, whether a request
+ * is in flight) and they render it. Keeping that state here is what lets a
+ * partial send leave the failures selected.
+ *
+ * Recommendations load on expand rather than with the page: fetching them for
+ * every posting up front would run a ranking pass over every application to
+ * show names the user may never look at.
  */
 export default function ManagedJobRow({
   job,
@@ -62,6 +67,7 @@ export default function ManagedJobRow({
   const [invited, setInvited] = useState<string[]>([])
 
   const panelId = `managed-panel-${job.id}`
+  const items = recommendations ?? []
 
   async function handleToggle() {
     onToggle()
@@ -122,14 +128,12 @@ export default function ManagedJobRow({
     }
   }
 
-  const selectable = (recommendations ?? []).filter(
-    (item) => !invited.includes(item.application.id),
-  )
-  const allSelected =
-    selectable.length > 0 && selected.length === selectable.length
-
   function toggleAll() {
-    setSelected(allSelected ? [] : selectable.map((item) => item.application.id))
+    const selectable = items
+      .filter((item) => !invited.includes(item.application.id))
+      .map((item) => item.application.id)
+
+    setSelected(selected.length === selectable.length ? [] : selectable)
   }
 
   function toggleOne(applicationId: string) {
@@ -138,12 +142,6 @@ export default function ManagedJobRow({
         ? current.filter((id) => id !== applicationId)
         : [...current, applicationId],
     )
-  }
-
-  function startComposing() {
-    setMessage(defaultInvite(job))
-    setIsComposing(true)
-    setError(null)
   }
 
   async function sendInvites() {
@@ -156,8 +154,8 @@ export default function ManagedJobRow({
     setBusy(true)
 
     // Sent one at a time and tracked individually: if the fourth of five
-    // fails, the first three were genuinely delivered and saying otherwise
-    // would be a lie the recruiter acts on.
+    // fails, the first three were genuinely delivered, and saying otherwise
+    // would be a lie the recruiter then acts on.
     const delivered: string[] = []
     const failed: string[] = []
 
@@ -275,179 +273,68 @@ export default function ManagedJobRow({
             </button>
           </div>
 
-          <div>
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h4 className="m-0 text-sm font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
-                  Top matches
-                </h4>
-                <p className="mt-1 text-xs text-[color:var(--text-muted)]">
-                  Ranked by keyword overlap between each candidate and this
-                  posting — a shortlist aid, not an assessment.
-                </p>
-              </div>
-
-              {selected.length > 0 && !isComposing && (
-                <button
-                  type="button"
-                  onClick={startComposing}
-                  className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
-                >
-                  Invite {selected.length} selected
-                </button>
-              )}
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h4 className="m-0 text-sm font-semibold uppercase tracking-wide text-[color:var(--text-muted)]">
+                Top matches
+              </h4>
+              <p className="mt-1 text-xs text-[color:var(--text-muted)]">
+                Ranked by keyword overlap between each candidate and this
+                posting — a shortlist aid, not an assessment.
+              </p>
             </div>
 
-            {isLoadingRecommendations && (
-              <p className="mt-3 text-sm text-[color:var(--text-muted)]">
-                Ranking applicants…
-              </p>
-            )}
-
-            {!isLoadingRecommendations && recommendations?.length === 0 && (
-              <p className="mt-3 text-sm text-[color:var(--text-muted)]">
-                No applications to rank yet.
-              </p>
-            )}
-
-            {(recommendations ?? []).length > 0 && (
-              <div className="mt-3 overflow-x-auto">
-                <table className="w-full min-w-[34rem] border-collapse text-sm">
-                  <thead>
-                    <tr className="border-b border-[color:var(--border)] text-left text-xs uppercase tracking-wide text-[color:var(--text-muted)]">
-                      <th scope="col" className="w-10 py-2">
-                        <input
-                          type="checkbox"
-                          checked={allSelected}
-                          onChange={toggleAll}
-                          disabled={selectable.length === 0}
-                          aria-label="Select all candidates"
-                          className="h-4 w-4"
-                        />
-                      </th>
-                      <th scope="col" className="py-2 pr-3">
-                        Candidate
-                      </th>
-                      <th scope="col" className="py-2 pr-3">
-                        Match
-                      </th>
-                      <th scope="col" className="py-2">
-                        Matched on
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {(recommendations ?? []).map(
-                      ({ application, score, matched_terms }) => {
-                        const isInvited = invited.includes(application.id)
-
-                        return (
-                          <tr
-                            key={application.id}
-                            className="border-b border-[color:var(--border)] align-top last:border-0"
-                          >
-                            <td className="py-3">
-                              <input
-                                type="checkbox"
-                                checked={selected.includes(application.id)}
-                                onChange={() => toggleOne(application.id)}
-                                disabled={isInvited}
-                                aria-label={`Select ${application.candidate.full_name}`}
-                                className="h-4 w-4"
-                              />
-                            </td>
-
-                            <td className="py-3 pr-3">
-                              <span className="block font-semibold text-slate-900">
-                                {application.candidate.full_name}
-                              </span>
-                              <span className="block text-xs text-[color:var(--text-muted)]">
-                                {application.candidate.email}
-                              </span>
-                              {isInvited && (
-                                <span className="mt-1 inline-block rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">
-                                  Invited
-                                </span>
-                              )}
-                            </td>
-
-                            <td className="py-3 pr-3">
-                              <span className="font-semibold text-[color:var(--accent)]">
-                                {Math.round(score * 100)}%
-                              </span>
-                            </td>
-
-                            <td className="py-3">
-                              <span className="flex flex-wrap gap-1">
-                                {matched_terms.slice(0, 6).map((term) => (
-                                  <span
-                                    key={term}
-                                    className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600"
-                                  >
-                                    {term}
-                                  </span>
-                                ))}
-                              </span>
-                            </td>
-                          </tr>
-                        )
-                      },
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            {isComposing && (
-              <div className="mt-4 rounded-lg border border-[color:var(--border)] bg-slate-50 p-4">
-                <label
-                  htmlFor={`invite-${job.id}`}
-                  className="block text-sm font-semibold text-slate-900"
-                >
-                  Invite {selected.length}{' '}
-                  {selected.length === 1 ? 'candidate' : 'candidates'}
-                </label>
-                <p className="mt-0.5 text-xs text-[color:var(--text-muted)]">
-                  Everyone selected receives the same message. Nothing is
-                  emailed — it appears in their invites.
-                </p>
-
-                <textarea
-                  id={`invite-${job.id}`}
-                  value={message}
-                  maxLength={2000}
-                  onChange={(event) => setMessage(event.target.value)}
-                  className="mt-2 min-h-32 w-full rounded-lg border border-[color:var(--border)] px-3 py-2 text-sm"
-                />
-
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    disabled={busy || selected.length === 0}
-                    onClick={() => void sendInvites()}
-                    className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
-                  >
-                    {busy
-                      ? 'Sending…'
-                      : `Send ${selected.length} ${
-                          selected.length === 1 ? 'invite' : 'invites'
-                        }`}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsComposing(false)
-                      setMessage('')
-                    }}
-                    className="rounded-lg border border-[color:var(--border)] bg-white px-4 py-2 text-sm font-semibold text-slate-700"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
+            {selected.length > 0 && !isComposing && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMessage(defaultInvite(job))
+                  setIsComposing(true)
+                  setError(null)
+                }}
+                className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+              >
+                Invite {selected.length} selected
+              </button>
             )}
           </div>
+
+          {isLoadingRecommendations && (
+            <p className="mt-3 text-sm text-[color:var(--text-muted)]">
+              Ranking applicants…
+            </p>
+          )}
+
+          {!isLoadingRecommendations && items.length === 0 && (
+            <p className="mt-3 text-sm text-[color:var(--text-muted)]">
+              No applications to rank yet.
+            </p>
+          )}
+
+          {items.length > 0 && (
+            <ShortlistTable
+              items={items}
+              selected={selected}
+              invited={invited}
+              onToggleOne={toggleOne}
+              onToggleAll={toggleAll}
+            />
+          )}
+
+          {isComposing && (
+            <InviteComposer
+              id={job.id}
+              recipientCount={selected.length}
+              message={message}
+              isSending={busy}
+              onChange={setMessage}
+              onSend={() => void sendInvites()}
+              onCancel={() => {
+                setIsComposing(false)
+                setMessage('')
+              }}
+            />
+          )}
         </div>
       )}
     </li>
