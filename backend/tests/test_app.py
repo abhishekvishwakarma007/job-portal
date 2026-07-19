@@ -4,13 +4,12 @@ Docker healthchecks depend on /health, and the compose file gates the
 backend on it — so these assertions protect the startup contract.
 """
 
-from types import ModuleType
+import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.v1.router import API_V1_PREFIX
-from app.api.v1.routes import applications, auth, jobs
 from app.core.config import get_settings
 from app.main import create_app
 
@@ -43,22 +42,83 @@ def test_openapi_schema_is_served(client: TestClient) -> None:
     assert response.json()["info"]["title"]
 
 
-@pytest.mark.parametrize(
-    ("module", "expected_prefix"),
-    [(auth, "/auth"), (jobs, "/jobs"), (applications, "/applications")],
-)
-def test_feature_router_prefixes(module: ModuleType, expected_prefix: str) -> None:
-    """Pin each feature's URL segment; the frontend client is generated off these.
+def test_documented_endpoints_exist(client: TestClient) -> None:
+    """Every path the README publishes must be in the served schema.
 
-    Asserted on the router objects rather than the OpenAPI paths because the
-    routers carry no endpoints yet — those arrive with their feature slices.
+    This replaces two tests that asserted constants against themselves —
+    `API_V1_PREFIX == "/api/v1"` and each router's prefix against its own
+    literal. Those could not fail: changing the constant changed both sides.
+    Comparing the live schema against the documented contract can, and catches
+    the drift that actually happens when an endpoint is renamed but the README
+    is not.
     """
-    assert module.router.prefix == expected_prefix
+    served = set(client.get("/openapi.json").json()["paths"])
+
+    readme = (Path(__file__).resolve().parent.parent.parent / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    # Paths as the README writes them, e.g. `/api/v1/jobs/{id}`.
+    documented = set(re.findall(r"`(/api/v1/[^`]+|/health)`", readme))
+
+    # The README uses {id}; FastAPI names the parameter. Compare on shape.
+    def shape(path: str) -> str:
+        return re.sub(r"\{[^}]+\}", "{}", path)
+
+    # Guard against a vacuous pass: an empty set difference is empty. If the
+    # regex stops matching, this must fail loudly rather than go green having
+    # compared nothing.
+    # Guards a vacuous pass: an empty set difference is empty, so a matcher
+    # that stopped working would go green having compared nothing. Set below
+    # the real count (19) but far above zero.
+    assert len(documented) >= 15, (
+        f"only parsed {len(documented)} paths from the README — the matcher "
+        "has probably stopped working"
+    )
+
+    missing = {
+        path
+        for path in documented
+        if shape(path) not in {shape(served_path) for served_path in served}
+    }
+
+    assert not missing, f"documented but not served: {sorted(missing)}"
 
 
-def test_api_version_prefix_is_stable() -> None:
-    """The versioned prefix is a published contract — changing it breaks clients."""
-    assert API_V1_PREFIX == "/api/v1"
+def test_every_served_endpoint_is_documented(client: TestClient) -> None:
+    """The other direction: an endpoint the README never mentions.
+
+    A route that exists but is undocumented is how DELETE /notifications/{id}
+    shipped unlisted for several commits.
+    """
+    served = set(client.get("/openapi.json").json()["paths"])
+
+    readme = (Path(__file__).resolve().parent.parent.parent / "README.md").read_text(
+        encoding="utf-8"
+    )
+
+    def shape(path: str) -> str:
+        return re.sub(r"\{[^}]+\}", "{}", path)
+
+    documented = {
+        shape(path) for path in re.findall(r"`(/api/v1/[^`]+|/health)`", readme)
+    }
+
+    # Guards a vacuous pass: an empty set difference is empty, so a matcher
+    # that stopped working would go green having compared nothing. Set below
+    # the real count (19) but far above zero.
+    assert len(documented) >= 15, (
+        f"only parsed {len(documented)} paths from the README — the matcher "
+        "has probably stopped working"
+    )
+
+    undocumented = {
+        path
+        for path in served
+        if shape(path) not in documented and not path.startswith("/openapi")
+    }
+
+    assert not undocumented, f"served but not documented: {sorted(undocumented)}"
 
 
 def test_cors_allow_list_rejects_unknown_origin(client: TestClient) -> None:

@@ -124,7 +124,10 @@ jobs:
         run: npm run typecheck
 
       - name: Test
-        run: npm test
+        # Coverage-gated: thresholds live in vite.config.ts, so a change that
+        # drops coverage fails here rather than going unnoticed the way five
+        # untested pages did.
+        run: npm run test:coverage
 
       - name: Build
         run: npx vite build

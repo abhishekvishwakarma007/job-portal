@@ -362,3 +362,40 @@ def test_unpublished_job_is_hidden_from_candidates(
         assert client.get(f"/api/v1/jobs/{job_id}", headers=hr_headers).status_code == 200
     finally:
         client.delete(f"/api/v1/jobs/{job_id}", headers=hr_headers)
+
+
+def test_a_new_account_can_register_and_sign_in(client: httpx.Client) -> None:
+    """The one step of the documented journey the suite used to skip.
+
+    Registration was avoided here to stay clear of the rate limit, which left
+    the first step of "register -> login -> apply" unproven end to end. One
+    account per run, at a unique address, stays well inside the budget.
+
+    There is no delete-account endpoint, so this leaves a row behind by
+    design — the alternative is reaching into the database from a black-box
+    suite, which would couple it to the schema it is meant to be independent
+    of. The address is namespaced so the residue is obvious for what it is.
+    """
+    marker = uuid.uuid4().hex[:10]
+    credentials = {
+        "email": f"e2e-{marker}@test.com",
+        "password": "E2ePassw0rd!",
+    }
+
+    created = client.post(
+        "/api/v1/auth/register",
+        json={**credentials, "full_name": "E2E Candidate", "role": "CANDIDATE"},
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["role"] == "CANDIDATE"
+    # The response must never carry password material back.
+    assert "password" not in created.json()
+
+    signed_in = client.post("/api/v1/auth/login", json=credentials)
+    assert signed_in.status_code == 200, signed_in.text
+
+    token = signed_in.json()["access_token"]
+    me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert me.status_code == 200
+    assert me.json()["email"] == credentials["email"]

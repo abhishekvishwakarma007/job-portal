@@ -31,5 +31,21 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     css: false,
+    // Gated for the same reason the backend is: without a threshold, five
+    // pages sat untested and nothing in CI could tell. Thresholds are set at
+    // what the suite actually reaches, rounded down — an aspirational number
+    // that always fails teaches everyone to ignore it.
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/test/**',
+        'src/main.tsx',
+        'src/vite-env.d.ts',
+      ],
+      thresholds: { lines: 90, functions: 85, branches: 90, statements: 90 },
+    },
   },
 })
