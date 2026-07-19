@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from app.models.application import Application
 from app.models.job import Job
+from app.models.profile import CandidateProfile
 
 # Words too common to carry signal. Matching on them would score every
 # applicant identically, which is the same as not ranking at all.
@@ -54,31 +55,68 @@ def _terms(text: str) -> set[str]:
     }
 
 
-def score_application(job: Job, application: Application) -> tuple[float, list[str]]:
-    """Return how well a cover letter overlaps the posting, and on what.
+def score_application(
+    job: Job,
+    application: Application,
+    profile: CandidateProfile | None = None,
+) -> tuple[float, list[str]]:
+    """Return how well a candidate overlaps the posting, and on what.
 
-    The denominator is the posting's vocabulary, not the letter's, so padding a
-    cover letter with unrelated words cannot inflate the score — only covering
-    more of what the posting actually asks for can.
+    Draws on the cover letter plus, when the candidate has filled one in, their
+    profile: key skills, summary, preferred role, and employment history. A
+    profile is the more durable signal — a letter is written for one posting,
+    while skills describe the person — so this reads both and takes the union.
+
+    Listed skills count double. Someone naming "postgres" as a skill is making
+    a stronger claim than someone who happened to use the word in a sentence,
+    and weighting is what stops a wordy letter outranking a matching one.
+
+    The denominator is the posting's vocabulary, not the candidate's, so
+    padding either text with unrelated words cannot inflate the score — only
+    covering more of what the posting actually asks for can.
     """
     job_terms = _terms(f"{job.title} {job.description}")
 
     if not job_terms:
         return 0.0, []
 
-    matched = sorted(job_terms & _terms(application.cover_letter))
+    candidate_terms = _terms(application.cover_letter)
+    skill_terms: set[str] = set()
 
-    return len(matched) / len(job_terms), matched
+    if profile is not None:
+        skill_terms = _terms(" ".join(profile.skill_list()))
+        candidate_terms |= skill_terms
+        candidate_terms |= _terms(
+            f"{profile.summary} {profile.preferred_role} {profile.employment}"
+        )
+
+    matched = job_terms & candidate_terms
+
+    if not matched:
+        return 0.0, []
+
+    # Skills weigh double, capped at 1.0 so a score stays a share of the
+    # posting rather than becoming an unbounded number.
+    weight = len(matched) + len(matched & skill_terms)
+    score = min(weight / len(job_terms), 1.0)
+
+    return score, sorted(matched)
 
 
 def rank_applications(
-    job: Job, applications: list[Application], *, limit: int
+    job: Job,
+    applications: list[Application],
+    *,
+    limit: int,
+    profiles: dict[str, CandidateProfile] | None = None,
 ) -> list[RankedApplication]:
     """Return the best-matching applicants first.
 
     Ties break on who applied earlier, so the ordering is stable between calls
     rather than shifting each time the page is refreshed.
     """
+    by_candidate = profiles or {}
+
     ranked = [
         RankedApplication(
             application=application,
@@ -86,7 +124,11 @@ def rank_applications(
             matched_terms=matched,
         )
         for application in applications
-        for score, matched in [score_application(job, application)]
+        for score, matched in [
+            score_application(
+                job, application, by_candidate.get(str(application.candidate_id))
+            )
+        ]
     ]
 
     ranked.sort(key=lambda item: (-item.score, item.application.created_at))

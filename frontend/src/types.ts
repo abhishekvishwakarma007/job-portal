@@ -108,3 +108,21 @@ export interface RecommendationPage {
   /** Named by the API so no view presents the score as more than it is. */
   method: string
 }
+
+export interface CandidateProfile {
+  id: string
+  user_id: string
+  headline: string
+  location: string
+  phone: string
+  summary: string
+  preferred_role: string
+  preferred_location: string
+  preferred_employment_type: string
+  /** Comma-separated; the server normalises the spacing. */
+  key_skills: string
+  employment: string
+  education: string
+  created_at: string
+  updated_at: string
+}

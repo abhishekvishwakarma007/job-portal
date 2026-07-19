@@ -14,11 +14,13 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import HRUser, OptionalUser
 from app.db.session import get_db
 from app.models.job import EmploymentType
+from app.models.profile import CandidateProfile
 from app.schemas.application import ApplicationPage, ApplicationRead
 from app.schemas.job import (
     DEFAULT_PAGE_SIZE,
@@ -250,7 +252,24 @@ def recommend_applicants(
     except (ApplicationNotFoundError, JobNotFoundError) as exc:
         raise _JOB_NOT_FOUND from exc
 
-    ranked = rank_applications(job, applications, limit=limit)
+    # One query for every applicant's profile rather than one per applicant:
+    # the ranking needs them all, and N+1 here would scale with the pipeline.
+    profiles = (
+        {
+            str(profile.user_id): profile
+            for profile in db.execute(
+                select(CandidateProfile).where(
+                    CandidateProfile.user_id.in_(
+                        [application.candidate_id for application in applications]
+                    )
+                )
+            ).scalars()
+        }
+        if applications
+        else {}
+    )
+
+    ranked = rank_applications(job, applications, limit=limit, profiles=profiles)
 
     return RecommendationPage(
         items=[

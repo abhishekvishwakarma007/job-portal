@@ -12,6 +12,7 @@ import LoginPage from './pages/LoginPage'
 import ManageJobsPage from './pages/ManageJobsPage'
 import MyApplicationsPage from './pages/MyApplicationsPage'
 import NotificationsPage from './pages/NotificationsPage'
+import ProfilePage from './pages/ProfilePage'
 import NotFoundPage from './pages/NotFoundPage'
 import RegisterPage from './pages/RegisterPage'
 
@@ -70,6 +71,12 @@ function Navigation() {
                 className="text-sm font-medium text-[color:var(--text-muted)] no-underline hover:text-slate-900"
               >
                 My applications
+              </Link>
+              <Link
+                to="/profile"
+                className="text-sm font-medium text-[color:var(--text-muted)] no-underline hover:text-slate-900"
+              >
+                Profile
               </Link>
               <Link
                 to="/notifications"
@@ -154,6 +161,15 @@ export default function App() {
             <Route path="/jobs/:jobId" element={<JobDetailPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute role="CANDIDATE">
+                  <ProfilePage />
+                </ProtectedRoute>
+              }
+            />
 
             <Route
               path="/notifications"

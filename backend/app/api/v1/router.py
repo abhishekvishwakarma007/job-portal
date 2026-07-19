@@ -6,7 +6,7 @@ feature touches one file and the version prefix lives in exactly one place.
 
 from fastapi import APIRouter
 
-from app.api.v1.routes import applications, auth, jobs, notifications
+from app.api.v1.routes import applications, auth, jobs, notifications, profile
 
 API_V1_PREFIX = "/api/v1"
 
@@ -16,3 +16,4 @@ api_router.include_router(auth.router)
 api_router.include_router(jobs.router)
 api_router.include_router(applications.router)
 api_router.include_router(notifications.router)
+api_router.include_router(profile.router)
