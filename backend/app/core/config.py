@@ -27,6 +27,11 @@ ALLOWED_DB_SCHEMES = ("postgresql://", "postgresql+psycopg://", "postgresql+asyn
 DEFAULT_CORS_ORIGINS = ["http://localhost:5173"]
 DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES = 15
 
+# Long enough that a person is not signed out mid-week, short enough that a
+# stolen token stops working while the theft is still recent. Rotation on every
+# use is what keeps the window narrow in practice.
+DEFAULT_REFRESH_TOKEN_EXPIRE_DAYS = 7
+
 
 class Environment(StrEnum):
     """Deployment environment. Gates debug-only behavior such as /docs."""
@@ -56,6 +61,9 @@ class Settings(BaseSettings):
 
     access_token_expire_minutes: int = Field(
         default=DEFAULT_ACCESS_TOKEN_EXPIRE_MINUTES, gt=0
+    )
+    refresh_token_expire_days: int = Field(
+        default=DEFAULT_REFRESH_TOKEN_EXPIRE_DAYS, gt=0
     )
     # NoDecode opts out of pydantic-settings' default JSON parsing for complex
     # types, so the validator below can accept a plain comma-separated string.
