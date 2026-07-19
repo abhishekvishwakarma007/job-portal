@@ -82,7 +82,7 @@ function Navigation() {
                 to="/notifications"
                 className="text-sm font-medium text-[color:var(--text-muted)] no-underline hover:text-slate-900"
               >
-                Notifications
+                Invites
               </Link>
             </>
           )}
