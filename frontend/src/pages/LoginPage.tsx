@@ -35,7 +35,7 @@ export default function LoginPage() {
       const signedIn = await login(email, password)
       const state = location.state as LocationState | null
       // HR users land on their postings; candidates on the job list.
-      const fallback = signedIn.role === 'HR' ? '/manage' : '/'
+      const fallback = signedIn.role === 'HR' ? '/manage' : '/jobs'
       navigate(state?.from ?? fallback, { replace: true })
     } catch (cause) {
       setError(

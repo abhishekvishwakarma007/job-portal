@@ -61,7 +61,7 @@ export default function RegisterPage() {
         full_name: fullName,
         role,
       })
-      navigate(created.role === 'HR' ? '/manage' : '/', { replace: true })
+      navigate(created.role === 'HR' ? '/manage' : '/jobs', { replace: true })
     } catch (cause) {
       if (cause instanceof ApiError) {
         // The server's per-field messages win over the client's: it validated
