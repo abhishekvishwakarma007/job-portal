@@ -28,6 +28,7 @@ from app.schemas.job import (
     JobRead,
     JobUpdate,
 )
+from app.schemas.notification import RecommendationPage, RecommendedApplicant
 from app.services.application import (
     ApplicationNotFoundError,
     list_applications_for_job,
@@ -42,6 +43,7 @@ from app.services.job import (
     list_jobs_owned_by,
     update_job,
 )
+from app.services.recommendation import rank_applications
 
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
@@ -218,4 +220,45 @@ def list_job_applications(
         total=total,
         limit=limit,
         offset=offset,
+    )
+
+
+@router.get(
+    "/{job_id}/recommendations",
+    response_model=RecommendationPage,
+    summary="Best-matching applicants for a job you posted",
+)
+def recommend_applicants(
+    job_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: HRUser,
+    limit: Annotated[int, Query(ge=1, le=20)] = 3,
+) -> RecommendationPage:
+    """Rank this posting's applicants by how well their letter matches it.
+
+    A keyword overlap, not an assessment of whether someone can do the job —
+    the response says so in `method` so no client can present it as more.
+
+    Ownership is checked the same way the pipeline is: a posting belonging to
+    another HR user is not found rather than found-and-refused.
+    """
+    try:
+        applications, _ = list_applications_for_job(
+            db, job_id=job_id, owner=current_user, limit=MAX_PAGE_SIZE, offset=0
+        )
+        job = get_owned_job(db, job_id, owner=current_user)
+    except (ApplicationNotFoundError, JobNotFoundError) as exc:
+        raise _JOB_NOT_FOUND from exc
+
+    ranked = rank_applications(job, applications, limit=limit)
+
+    return RecommendationPage(
+        items=[
+            RecommendedApplicant(
+                application=ApplicationRead.model_validate(item.application),
+                score=round(item.score, 3),
+                matched_terms=item.matched_terms[:12],
+            )
+            for item in ranked
+        ]
     )

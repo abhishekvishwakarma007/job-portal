@@ -21,6 +21,7 @@ from app.schemas.application import (
     ApplicationStatusUpdate,
 )
 from app.schemas.job import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
+from app.schemas.notification import ContactApplicantRequest, NotificationRead
 from app.services.application import (
     AlreadyAppliedError,
     ApplicationNotFoundError,
@@ -31,6 +32,7 @@ from app.services.application import (
     list_applications_by_candidate,
     update_application_status,
 )
+from app.services.notification import notify_applicant
 
 router = APIRouter(prefix="/applications", tags=["applications"])
 
@@ -159,3 +161,44 @@ def set_application_status(
     )
 
     return ApplicationRead.model_validate(updated)
+
+
+@router.post(
+    "/{application_id}/contact",
+    response_model=NotificationRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Message an applicant",
+)
+def contact_applicant(
+    application_id: uuid.UUID,
+    payload: ContactApplicantRequest,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: HRUser,
+) -> NotificationRead:
+    """Send an applicant a message about their application.
+
+    No mail is dispatched. The message is written as an in-app notification the
+    candidate reads in the portal, which keeps a review environment from
+    emitting real email to a real inbox. A production build would keep this row
+    as the record and add a sender alongside it.
+
+    Only the owner of the posting may write to its applicants, and the
+    recipient comes from the application rather than the request body — so a
+    message cannot be addressed to someone who never applied.
+    """
+    try:
+        application = get_application_for_job_owner(
+            db, application_id, owner=current_user
+        )
+    except ApplicationNotFoundError as exc:
+        raise _APPLICATION_NOT_FOUND from exc
+
+    notification = notify_applicant(
+        db,
+        application=application,
+        job=application.job,
+        sender=current_user,
+        message=payload.message,
+    )
+
+    return NotificationRead.model_validate(notification)
