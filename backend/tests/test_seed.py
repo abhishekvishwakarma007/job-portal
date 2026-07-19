@@ -126,10 +126,13 @@ def test_documented_credentials_match_the_brief() -> None:
     """
     published = {(spec.email, spec.password, spec.role) for spec in SEED_USERS}
 
-    assert published == {
+    # A superset check, not equality: extra demo accounts are welcome and get
+    # added freely, but these two are what the brief hands the assessor and
+    # must never drift.
+    assert {
         ("admin@test.com", "Admin@1234", UserRole.HR),
         ("user@test.com", "User@1234", UserRole.CANDIDATE),
-    }
+    } <= published
 
 
 @pytest.mark.parametrize("spec", SEED_USERS, ids=lambda spec: spec.email)
