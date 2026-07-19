@@ -1,0 +1,41 @@
+# Local development stack. The backend and frontend services join this file as
+# their Dockerfiles land; the database comes first because the test suite runs
+# against a real Postgres rather than mocks or SQLite.
+#
+# Values here are development-only and intentionally committed: the assessor
+# clones fresh with no .env and runs `docker compose up --build`, so the stack
+# must be self-sufficient. They are never used outside local/dev.
+
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: jobportal-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jobportal
+      POSTGRES_PASSWORD: jobportal
+      POSTGRES_DB: jobportal
+    ports:
+      # Exposed so the test suite and a locally-run uvicorn can reach it.
+      # Once the backend is containerised it talks over the Docker network
+      # instead, on the internal hostname `db`.
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Provisions the separate test database on first boot. Read-only because
+      # the container never needs to write back to the repo.
+      - ./docker/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Gates dependent services: they wait for readiness, not merely for the
+      # container to have started. Postgres briefly accepts then drops
+      # connections during init, so "started" is not the same as "usable".
+      test: ["CMD-SHELL", "pg_isready -U jobportal -d jobportal"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+volumes:
+  # Named rather than anonymous so data survives `docker compose down`.
+  postgres_data:
