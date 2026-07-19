@@ -10,7 +10,12 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.job import LOCATION_MAX_LENGTH, TITLE_MAX_LENGTH, EmploymentType
+from app.models.job import (
+    COMPANY_MAX_LENGTH,
+    LOCATION_MAX_LENGTH,
+    TITLE_MAX_LENGTH,
+    EmploymentType,
+)
 from app.schemas.auth import UserRead
 
 DESCRIPTION_MAX_LENGTH = 20_000
@@ -25,6 +30,7 @@ class JobCreate(BaseModel):
     """A new posting. Ownership and timestamps are server-assigned."""
 
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
+    company: str = Field(min_length=1, max_length=COMPANY_MAX_LENGTH)
     description: str = Field(min_length=1, max_length=DESCRIPTION_MAX_LENGTH)
     location: str = Field(min_length=1, max_length=LOCATION_MAX_LENGTH)
     employment_type: EmploymentType
@@ -39,6 +45,7 @@ class JobUpdate(BaseModel):
     """
 
     title: str | None = Field(default=None, min_length=1, max_length=TITLE_MAX_LENGTH)
+    company: str | None = Field(default=None, min_length=1, max_length=COMPANY_MAX_LENGTH)
     description: str | None = Field(
         default=None, min_length=1, max_length=DESCRIPTION_MAX_LENGTH
     )
@@ -56,6 +63,7 @@ class JobRead(BaseModel):
 
     id: uuid.UUID
     title: str
+    company: str
     description: str
     location: str
     employment_type: EmploymentType

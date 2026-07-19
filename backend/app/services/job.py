@@ -45,6 +45,7 @@ def list_jobs(
     *,
     viewer: User | None = None,
     search: str | None = None,
+    company: str | None = None,
     location: str | None = None,
     employment_type: EmploymentType | None = None,
     limit: int,
@@ -61,6 +62,10 @@ def list_jobs(
         # ilike rather than lower(...) like: the candidate typing "engineer"
         # should match "Backend Engineer" regardless of case.
         statement = statement.where(Job.title.ilike(f"%{search}%"))
+
+    if company:
+        # Substring like the others: "acme" should find "Acme Robotics Ltd".
+        statement = statement.where(Job.company.ilike(f"%{company}%"))
 
     if location:
         # Substring, not equality: "berlin" should find "Berlin, Germany", and
@@ -132,6 +137,7 @@ def create_job(db: Session, *, payload: JobCreate, owner: User) -> Job:
     """
     job = Job(
         title=payload.title,
+        company=payload.company,
         description=payload.description,
         location=payload.location,
         employment_type=payload.employment_type,

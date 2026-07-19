@@ -107,6 +107,7 @@ class SeedJob:
     """A demo posting owned by the seeded HR account."""
 
     title: str
+    company: str
     description: str
     location: str
     employment_type: EmploymentType
@@ -119,6 +120,7 @@ class SeedJob:
 SEED_JOBS: tuple[SeedJob, ...] = (
     SeedJob(
         title="Senior Platform Engineer",
+        company="Northwind Labs",
         description=(
             "Own the deployment pipeline end to end: build, test, release.\n\n"
             "You will work across our Docker and CI tooling, and have real say "
@@ -129,6 +131,7 @@ SEED_JOBS: tuple[SeedJob, ...] = (
     ),
     SeedJob(
         title="Product Designer",
+        company="Kestrel Studio",
         description=(
             "Shape the candidate experience from first search to offer.\n\n"
             "You will own flows end to end and work directly with engineering. "
@@ -139,6 +142,7 @@ SEED_JOBS: tuple[SeedJob, ...] = (
     ),
     SeedJob(
         title="Backend Engineer (Python)",
+        company="Northwind Labs",
         description=(
             "Build the APIs behind our hiring product.\n\n"
             "FastAPI, Postgres, and a strong bias toward tests that assert "
@@ -149,6 +153,7 @@ SEED_JOBS: tuple[SeedJob, ...] = (
     ),
     SeedJob(
         title="Data Analyst Intern",
+        company="Bluepeak Analytics",
         description=(
             "Help us understand where candidates drop out of the funnel.\n\n"
             "Six-month placement with a view to a permanent role."
@@ -158,6 +163,7 @@ SEED_JOBS: tuple[SeedJob, ...] = (
     ),
     SeedJob(
         title="Engineering Manager",
+        company="Northwind Labs",
         description=(
             "Not yet advertised — this posting is a draft.\n\n"
             "It exists so the draft state is visible in the HR view without "
@@ -200,6 +206,7 @@ def seed_jobs(db: Session, *, owner: User) -> list[Job]:
 
         job = Job(
             title=spec.title,
+            company=spec.company,
             description=spec.description,
             location=spec.location,
             employment_type=spec.employment_type,
