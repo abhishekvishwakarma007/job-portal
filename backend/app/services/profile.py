@@ -1,11 +1,19 @@
 """Reading and updating candidate profiles."""
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.profile import CandidateProfile
 from app.models.user import User
 from app.schemas.profile import ProfileUpdate
+
+
+def _find_profile(db: Session, *, user: User) -> CandidateProfile | None:
+    """The user's profile, or None."""
+    return db.execute(
+        select(CandidateProfile).where(CandidateProfile.user_id == user.id)
+    ).scalar_one_or_none()
 
 
 def get_or_create_profile(db: Session, *, user: User) -> CandidateProfile:
@@ -14,19 +22,35 @@ def get_or_create_profile(db: Session, *, user: User) -> CandidateProfile:
     Created on read rather than at registration so an account that never opens
     the profile page carries no empty row, and so profiles exist for accounts
     that predate this feature without a data migration.
+
+    The check-then-insert is a race: two requests arriving together — the page
+    load and its first save, or a double-click — can both find nothing and both
+    insert. The UNIQUE constraint refuses the second, so the loser catches that
+    and re-reads rather than failing the request. Without this the user sees a
+    500 on a perfectly ordinary interaction.
     """
-    profile = db.execute(
-        select(CandidateProfile).where(CandidateProfile.user_id == user.id)
-    ).scalar_one_or_none()
+    profile = _find_profile(db, user=user)
 
     if profile is not None:
         return profile
 
     profile = CandidateProfile(user_id=user.id)
     db.add(profile)
-    db.commit()
-    db.refresh(profile)
 
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = _find_profile(db, user=user)
+
+        if existing is None:
+            # The constraint fired for some reason other than the race we
+            # expected; hiding that would turn a real fault into a silent one.
+            raise
+
+        return existing
+
+    db.refresh(profile)
     return profile
 
 
