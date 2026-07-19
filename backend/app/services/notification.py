@@ -64,6 +64,27 @@ def count_unread(db: Session, *, user: User) -> int:
     ).scalar_one()
 
 
+def dismiss(db: Session, notification_id: uuid.UUID, *, user: User) -> None:
+    """Delete one of the caller's own notifications.
+
+    Ownership is in the query rather than checked afterwards, so another
+    user's notification is not found rather than found-and-refused — and there
+    is no window in which this holds a row it may not delete.
+    """
+    notification = db.execute(
+        select(Notification).where(
+            Notification.id == notification_id,
+            Notification.user_id == user.id,
+        )
+    ).scalar_one_or_none()
+
+    if notification is None:
+        raise NotificationNotFoundError(notification_id)
+
+    db.delete(notification)
+    db.commit()
+
+
 def mark_read(db: Session, notification_id: uuid.UUID, *, user: User) -> Notification:
     """Mark one of the caller's own notifications as read.
 

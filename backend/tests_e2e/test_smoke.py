@@ -263,7 +263,16 @@ def test_hr_message_reaches_the_candidate_as_an_invite(
 
     inbox = client.get("/api/v1/notifications/mine", headers=candidate_headers)
     assert inbox.status_code == 200
-    assert any(marker in item["body"] for item in inbox.json()["items"])
+
+    delivered = [item for item in inbox.json()["items"] if marker in item["body"]]
+    assert delivered, "the message did not reach the candidate's invites"
+
+    # Dismiss it. Deleting the job only nulls the notification's job_id, so
+    # without this the suite leaves an orphan invite in the demo database
+    # naming a throwaway test posting — which is exactly what it did before
+    # this cleanup existed.
+    for item in delivered:
+        client.delete(f"/api/v1/notifications/{item['id']}", headers=candidate_headers)
 
 
 def test_candidate_profile_round_trips(

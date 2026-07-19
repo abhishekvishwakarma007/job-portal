@@ -8,7 +8,7 @@ app/models/notification.py for why.
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import CurrentUser
@@ -18,6 +18,7 @@ from app.schemas.notification import NotificationPage, NotificationRead
 from app.services.notification import (
     NotificationNotFoundError,
     count_unread,
+    dismiss,
     list_notifications,
     mark_read,
 )
@@ -71,3 +72,30 @@ def read_notification(
         ) from exc
 
     return NotificationRead.model_validate(notification)
+
+
+@router.delete(
+    "/{notification_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Dismiss a notification",
+)
+def dismiss_notification(
+    notification_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: CurrentUser,
+) -> Response:
+    """Remove one of the caller's own notifications.
+
+    404 for someone else's, matching the read endpoint: whether a given
+    notification id exists is not something one user should learn about
+    another.
+    """
+    try:
+        dismiss(db, notification_id, user=current_user)
+    except NotificationNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Notification not found",
+        ) from exc
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
