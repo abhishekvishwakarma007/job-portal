@@ -180,6 +180,19 @@ jobs:
             -d '{"email":"user@test.com","password":"User@1234"}' \
             | grep -q access_token
 
+      # The curl checks above prove the stack answers; this proves it
+      # behaves. Same suite a developer runs locally against `compose up`.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install the end-to-end test dependencies
+        run: pip install pytest httpx
+
+      - name: Run the end-to-end suite against the running stack
+        working-directory: backend
+        run: pytest tests_e2e -q
+
       - name: Dump logs on failure
         if: failure()
         run: docker compose logs

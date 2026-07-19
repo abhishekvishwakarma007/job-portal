@@ -46,6 +46,7 @@ select = [
 # Asserts are the point of a test file; bandit's S101 is noise here. S105/S106
 # likewise: the auth tests must name literal passwords to test passwords.
 "tests/*" = ["S101", "S105", "S106"]
+"tests_e2e/*" = ["S101", "S105", "S106"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["app"]
