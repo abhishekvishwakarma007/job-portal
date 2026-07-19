@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import HRUser, OptionalUser
 from app.db.session import get_db
+from app.schemas.application import ApplicationPage, ApplicationRead
 from app.schemas.job import (
     DEFAULT_PAGE_SIZE,
     MAX_PAGE_SIZE,
@@ -25,6 +26,10 @@ from app.schemas.job import (
     JobPage,
     JobRead,
     JobUpdate,
+)
+from app.services.application import (
+    ApplicationNotFoundError,
+    list_applications_for_job,
 )
 from app.services.job import (
     JobNotFoundError,
@@ -165,3 +170,35 @@ def remove_job(
     delete_job(db, job=job)
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get(
+    "/{job_id}/applications",
+    response_model=ApplicationPage,
+    summary="Applications to a job you posted",
+)
+def list_job_applications(
+    job_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    current_user: HRUser,
+    limit: Limit = DEFAULT_PAGE_SIZE,
+    offset: Offset = 0,
+) -> ApplicationPage:
+    """Return the pipeline for a posting the caller owns.
+
+    404 when the job belongs to someone else, for the usual reason: a 403 would
+    confirm the posting exists and hint at how much interest it has attracted.
+    """
+    try:
+        applications, total = list_applications_for_job(
+            db, job_id=job_id, owner=current_user, limit=limit, offset=offset
+        )
+    except ApplicationNotFoundError as exc:
+        raise _JOB_NOT_FOUND from exc
+
+    return ApplicationPage(
+        items=[ApplicationRead.model_validate(item) for item in applications],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )

@@ -108,3 +108,21 @@ def require_hr(current_user: CurrentUser) -> User:
 
 
 HRUser = Annotated[User, Depends(require_hr)]
+
+
+def require_candidate(current_user: CurrentUser) -> User:
+    """Admit only candidates.
+
+    Applying is a candidate capability: an HR user submitting an application to
+    their own posting would put a reviewer inside the pipeline they review.
+    """
+    if current_user.role is not UserRole.CANDIDATE:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This action requires a candidate account",
+        )
+
+    return current_user
+
+
+CandidateUser = Annotated[User, Depends(require_candidate)]
