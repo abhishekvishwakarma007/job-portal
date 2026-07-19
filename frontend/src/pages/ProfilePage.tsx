@@ -240,7 +240,11 @@ export default function ProfilePage() {
             hint="Two or three sentences. Read when a hiring team ranks you."
             fields={['summary']}
           >
+            <label className="sr-only" htmlFor="summary">
+              Profile summary
+            </label>
             <textarea
+              id="summary"
               className={`${INPUT_CLASS} min-h-24`}
               value={draft.summary}
               maxLength={PROFILE_TEXT_MAX_LENGTH}
@@ -256,7 +260,11 @@ export default function ProfilePage() {
             hint="Comma separated. Weighted above prose when applicants are ranked."
             fields={['key_skills']}
           >
+            <label className="sr-only" htmlFor="key_skills">
+              Key skills
+            </label>
             <input
+              id="key_skills"
               className={INPUT_CLASS}
               value={draft.key_skills}
               maxLength={SKILLS_MAX_LENGTH}
@@ -348,7 +356,11 @@ export default function ProfilePage() {
             hint="One role per line: title, company, dates."
             fields={['employment']}
           >
+            <label className="sr-only" htmlFor="employment">
+              Employment history
+            </label>
             <textarea
+              id="employment"
               className={`${INPUT_CLASS} min-h-24`}
               value={draft.employment}
               maxLength={PROFILE_TEXT_MAX_LENGTH}
@@ -364,7 +376,11 @@ export default function ProfilePage() {
             hint="One qualification per line."
             fields={['education']}
           >
+            <label className="sr-only" htmlFor="education">
+              Education
+            </label>
             <textarea
+              id="education"
               className={`${INPUT_CLASS} min-h-20`}
               value={draft.education}
               maxLength={PROFILE_TEXT_MAX_LENGTH}
