@@ -57,12 +57,20 @@ function Navigation() {
           className="flex flex-wrap items-center gap-4"
           aria-label="Main"
         >
-          <Link
-            to="/jobs"
-            className="text-sm font-medium text-[color:var(--text-muted)] no-underline hover:text-slate-900"
-          >
-            Browse jobs
-          </Link>
+          {/* Not shown to HR. A job-seeker feed in a recruiter's primary nav
+              is noise: it mixes every employer's roles into the one place
+              navigation should be decisive. The /jobs route stays public, so
+              an HR user following a link from the landing page still reaches
+              it — this is a navigation decision, not an access one, and the
+              API gates access independently either way. */}
+          {user?.role !== 'HR' && (
+            <Link
+              to="/jobs"
+              className="text-sm font-medium text-[color:var(--text-muted)] no-underline hover:text-slate-900"
+            >
+              Browse jobs
+            </Link>
+          )}
 
           {!isLoading && user?.role === 'CANDIDATE' && (
             <>
