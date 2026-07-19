@@ -2,25 +2,64 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 
 import AsyncBoundary from '../components/AsyncBoundary'
+import FormField, { FormAlert } from '../components/form/FormField'
 import {
   COMPANY_MAX_LENGTH,
-  JOB_DESCRIPTION_MAX_LENGTH as DESCRIPTION_MAX_LENGTH,
-  JOB_TITLE_MAX_LENGTH as TITLE_MAX_LENGTH,
+  JOB_DESCRIPTION_MAX_LENGTH,
+  JOB_TITLE_MAX_LENGTH,
   LOCATION_MAX_LENGTH,
 } from '../constants'
 import { useApiResource } from '../hooks/useApiResource'
 import { ApiError, request } from '../lib/api'
 import { EMPLOYMENT_TYPE_LABELS, type EmploymentType, type Job } from '../types'
 
-type FieldErrors = Partial<
-  Record<'title' | 'company' | 'description' | 'location' | 'employment_type', string>
->
+type Draft = {
+  title: string
+  company: string
+  location: string
+  employment_type: EmploymentType
+  description: string
+  is_published: boolean
+}
+
+const EMPTY: Draft = {
+  title: '',
+  company: '',
+  location: '',
+  employment_type: 'FULL_TIME',
+  description: '',
+  is_published: true,
+}
+
+type Errors = Partial<Record<keyof Draft, string>>
+
+/** Required text fields, with the limit each must respect. */
+const REQUIRED: { name: keyof Draft; label: string; max: number }[] = [
+  { name: 'title', label: 'Title', max: JOB_TITLE_MAX_LENGTH },
+  { name: 'company', label: 'Company', max: COMPANY_MAX_LENGTH },
+  { name: 'location', label: 'Location', max: LOCATION_MAX_LENGTH },
+  { name: 'description', label: 'Description', max: JOB_DESCRIPTION_MAX_LENGTH },
+]
+
+/** Validate client-side so the user is told before a round trip, not after. */
+function validate(draft: Draft): Errors {
+  const errors: Errors = {}
+
+  for (const { name, label, max } of REQUIRED) {
+    const value = String(draft[name])
+    if (!value.trim()) errors[name] = `${label} is required.`
+    else if (value.length > max)
+      errors[name] = `${label} must be at most ${max} characters.`
+  }
+
+  return errors
+}
 
 /**
  * Create or edit a posting.
  *
- * One component for both: the fields and rules are identical, and a separate
- * edit screen would be the same form with two lines changed — and one more
+ * One component for both: the fields and rules are identical, so a separate
+ * edit screen would be the same form with two lines changed, plus one more
  * place to forget a validation rule.
  */
 export default function JobFormPage() {
@@ -29,84 +68,44 @@ export default function JobFormPage() {
   const navigate = useNavigate()
 
   const existing = useApiResource<Job>(isEditing ? `/jobs/${jobId}` : '/jobs')
-
-  const [title, setTitle] = useState('')
-  const [company, setCompany] = useState('')
-  const [description, setDescription] = useState('')
-  const [location, setLocation] = useState('')
-  const [employmentType, setEmploymentType] =
-    useState<EmploymentType>('FULL_TIME')
-  const [isPublished, setIsPublished] = useState(true)
-
-  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({})
+  const [draft, setDraft] = useState<Draft>(EMPTY)
+  const [errors, setErrors] = useState<Errors>({})
   const [error, setError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Populate once the existing posting arrives.
   useEffect(() => {
     if (!isEditing || !existing.data) return
 
-    const job = existing.data
-    setTitle(job.title)
-    setCompany(job.company)
-    setDescription(job.description)
-    setLocation(job.location)
-    setEmploymentType(job.employment_type)
-    setIsPublished(job.is_published)
+    const { title, company, location, employment_type, description, is_published } =
+      existing.data
+    setDraft({ title, company, location, employment_type, description, is_published })
   }, [isEditing, existing.data])
 
-  function validate(): FieldErrors {
-    const errors: FieldErrors = {}
-
-    if (!company.trim()) errors.company = 'Company is required.'
-    else if (company.length > COMPANY_MAX_LENGTH)
-      errors.company = `Company must be at most ${COMPANY_MAX_LENGTH} characters.`
-
-    if (!title.trim()) errors.title = 'Title is required.'
-    else if (title.length > TITLE_MAX_LENGTH)
-      errors.title = `Title must be at most ${TITLE_MAX_LENGTH} characters.`
-
-    if (!description.trim()) errors.description = 'Description is required.'
-
-    if (!location.trim()) errors.location = 'Location is required.'
-    else if (location.length > LOCATION_MAX_LENGTH)
-      errors.location = `Location must be at most ${LOCATION_MAX_LENGTH} characters.`
-
-    return errors
+  function set<K extends keyof Draft>(field: K, value: Draft[K]) {
+    setDraft((current) => ({ ...current, [field]: value }))
   }
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     setError(null)
 
-    const errors = validate()
-    setFieldErrors(errors)
-    if (Object.keys(errors).length > 0) return
+    const found = validate(draft)
+    setErrors(found)
+    if (Object.keys(found).length > 0) return
 
     setIsSubmitting(true)
-
-    const body = {
-      title,
-      company,
-      description,
-      location,
-      employment_type: employmentType,
-      is_published: isPublished,
-    }
-
     try {
-      if (isEditing) {
-        await request<Job>(`/jobs/${jobId}`, { method: 'PATCH', body })
-      } else {
-        await request<Job>('/jobs', { method: 'POST', body })
-      }
+      await request<Job>(isEditing ? `/jobs/${jobId}` : '/jobs', {
+        method: isEditing ? 'PATCH' : 'POST',
+        body: draft,
+      })
       navigate('/manage', { replace: true })
     } catch (cause) {
+      // The server validated the same input with the authoritative rules, so
+      // its per-field messages win over the client's.
       if (cause instanceof ApiError) {
-        setFieldErrors(cause.fieldErrors as FieldErrors)
-        setError(
-          Object.keys(cause.fieldErrors).length > 0 ? null : cause.message,
-        )
+        setErrors(cause.fieldErrors as Errors)
+        setError(Object.keys(cause.fieldErrors).length > 0 ? null : cause.message)
       } else {
         setError('Could not save the role. Please try again.')
       }
@@ -116,7 +115,7 @@ export default function JobFormPage() {
   }
 
   return (
-    <section className="stack">
+    <section className="mx-auto max-w-2xl">
       <p>
         <Link to="/manage">← Back to my postings</Link>
       </p>
@@ -125,95 +124,84 @@ export default function JobFormPage() {
         isLoading={isEditing && existing.isLoading}
         error={isEditing ? existing.error : null}
       >
-        <form className="card" onSubmit={handleSubmit} noValidate>
-          <h1>{isEditing ? 'Edit role' : 'Post a role'}</h1>
+        <form
+          className="rounded-xl border border-[color:var(--border)] bg-white p-5 shadow-sm"
+          onSubmit={handleSubmit}
+          noValidate
+        >
+          <h1 className="text-xl font-bold text-slate-900">
+            {isEditing ? 'Edit role' : 'Post a role'}
+          </h1>
 
-          {error && (
-            <p className="alert alert--error" role="alert">
-              {error}
-            </p>
-          )}
+          <FormAlert message={error} />
 
-          <div className="field">
-            <label htmlFor="title">Title</label>
+          <FormField
+            id="title"
+            label="Title"
+            value={draft.title}
+            error={errors.title}
+            maxLength={JOB_TITLE_MAX_LENGTH}
+            onChange={(value) => set('title', value)}
+            required
+          />
+          <FormField
+            id="company"
+            label="Company"
+            value={draft.company}
+            error={errors.company}
+            maxLength={COMPANY_MAX_LENGTH}
+            placeholder="Who is hiring for this role?"
+            onChange={(value) => set('company', value)}
+            required
+          />
+          <FormField
+            id="location"
+            label="Location"
+            value={draft.location}
+            error={errors.location}
+            maxLength={LOCATION_MAX_LENGTH}
+            placeholder="Remote, Berlin, Bangalore…"
+            onChange={(value) => set('location', value)}
+            required
+          />
+          <FormField
+            id="employment_type"
+            label="Employment type"
+            value={draft.employment_type}
+            options={Object.entries(EMPLOYMENT_TYPE_LABELS).map(
+              ([value, label]) => ({ value, label }),
+            )}
+            onChange={(value) => set('employment_type', value as EmploymentType)}
+          />
+          <FormField
+            id="description"
+            label="Description"
+            value={draft.description}
+            error={errors.description}
+            maxLength={JOB_DESCRIPTION_MAX_LENGTH}
+            multiline
+            placeholder="What the role involves, and what you are looking for."
+            onChange={(value) => set('description', value)}
+            required
+          />
+
+          <label className="mb-4 flex items-center gap-2 text-sm">
             <input
-              id="title"
-              value={title}
-              maxLength={TITLE_MAX_LENGTH}
-              onChange={(event) => setTitle(event.target.value)}
-              aria-invalid={Boolean(fieldErrors.title)}
-              required
+              type="checkbox"
+              checked={draft.is_published}
+              onChange={(event) => set('is_published', event.target.checked)}
             />
-            {fieldErrors.title && (
-              <span className="field__error">{fieldErrors.title}</span>
-            )}
-          </div>
+            Publish immediately
+          </label>
+          <p className="mb-4 -mt-3 text-xs text-[color:var(--text-muted)]">
+            Unpublished roles stay private to you and accept no applications.
+          </p>
 
-          <div className="field">
-            <label htmlFor="location">Location</label>
-            <input
-              id="location"
-              value={location}
-              maxLength={LOCATION_MAX_LENGTH}
-              onChange={(event) => setLocation(event.target.value)}
-              aria-invalid={Boolean(fieldErrors.location)}
-              placeholder="Remote, Berlin, Bangalore…"
-              required
-            />
-            {fieldErrors.location && (
-              <span className="field__error">{fieldErrors.location}</span>
-            )}
-          </div>
-
-          <div className="field">
-            <label htmlFor="employment_type">Employment type</label>
-            <select
-              id="employment_type"
-              value={employmentType}
-              onChange={(event) =>
-                setEmploymentType(event.target.value as EmploymentType)
-              }
-            >
-              {Object.entries(EMPLOYMENT_TYPE_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="field">
-            <label htmlFor="description">Description</label>
-            <textarea
-              id="description"
-              value={description}
-              maxLength={DESCRIPTION_MAX_LENGTH}
-              onChange={(event) => setDescription(event.target.value)}
-              aria-invalid={Boolean(fieldErrors.description)}
-              placeholder="What the role involves, and what you are looking for."
-              required
-            />
-            {fieldErrors.description && (
-              <span className="field__error">{fieldErrors.description}</span>
-            )}
-          </div>
-
-          <div className="field">
-            <label className="row" style={{ fontWeight: 400 }}>
-              <input
-                type="checkbox"
-                checked={isPublished}
-                onChange={(event) => setIsPublished(event.target.checked)}
-                style={{ width: 'auto' }}
-              />
-              Publish immediately
-            </label>
-            <span className="field__hint">
-              Unpublished roles stay private to you and accept no applications.
-            </span>
-          </div>
-
-          <button className="button" type="submit" disabled={isSubmitting}>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="rounded-lg bg-[color:var(--accent)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90 disabled:opacity-60"
+          >
             {isSubmitting ? 'Saving…' : isEditing ? 'Save changes' : 'Post role'}
           </button>
         </form>
