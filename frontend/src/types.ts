@@ -78,3 +78,33 @@ export const APPLICATION_STATUS_LABELS: Record<ApplicationStatus, string> = {
   ACCEPTED: 'Accepted',
   REJECTED: 'Rejected',
 }
+
+export interface Notification {
+  id: string
+  subject: string
+  body: string
+  is_read: boolean
+  job_id: string | null
+  created_at: string
+}
+
+export interface NotificationPage {
+  items: Notification[]
+  total: number
+  unread: number
+  limit: number
+  offset: number
+}
+
+export interface RecommendedApplicant {
+  application: Application
+  /** 0-1 share of the posting's vocabulary the cover letter covers. */
+  score: number
+  matched_terms: string[]
+}
+
+export interface RecommendationPage {
+  items: RecommendedApplicant[]
+  /** Named by the API so no view presents the score as more than it is. */
+  method: string
+}

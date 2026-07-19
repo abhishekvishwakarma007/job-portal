@@ -11,6 +11,7 @@ import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
 import ManageJobsPage from './pages/ManageJobsPage'
 import MyApplicationsPage from './pages/MyApplicationsPage'
+import NotificationsPage from './pages/NotificationsPage'
 import NotFoundPage from './pages/NotFoundPage'
 import RegisterPage from './pages/RegisterPage'
 
@@ -63,12 +64,20 @@ function Navigation() {
           </Link>
 
           {!isLoading && user?.role === 'CANDIDATE' && (
-            <Link
-              to="/applications"
-              className="text-sm font-medium text-[color:var(--text-muted)] no-underline hover:text-slate-900"
-            >
-              My applications
-            </Link>
+            <>
+              <Link
+                to="/applications"
+                className="text-sm font-medium text-[color:var(--text-muted)] no-underline hover:text-slate-900"
+              >
+                My applications
+              </Link>
+              <Link
+                to="/notifications"
+                className="text-sm font-medium text-[color:var(--text-muted)] no-underline hover:text-slate-900"
+              >
+                Notifications
+              </Link>
+            </>
           )}
 
           {!isLoading && user?.role === 'HR' && (
@@ -145,6 +154,15 @@ export default function App() {
             <Route path="/jobs/:jobId" element={<JobDetailPage />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
+
+            <Route
+              path="/notifications"
+              element={
+                <ProtectedRoute>
+                  <NotificationsPage />
+                </ProtectedRoute>
+              }
+            />
 
             <Route
               path="/applications"
