@@ -49,6 +49,8 @@ class SlidingWindowRateLimiter:
     # Uvicorn serves requests on a thread pool for sync handlers, so two
     # requests really can touch one key at once.
     _lock: Lock = field(default_factory=Lock)
+    # Below this many tracked callers the sweep is not worth the walk.
+    _eviction_threshold: int = 512
 
     def check(self, key: str, *, now: float | None = None) -> RateLimitResult:
         """Record a request against `key` and say whether it is allowed."""
@@ -70,13 +72,32 @@ class SlidingWindowRateLimiter:
                 return RateLimitResult(allowed=False, retry_after=retry_after)
 
             hits.append(current)
-
-            # An empty deque left behind for every key ever seen is a slow leak
-            # on an endpoint reachable by anyone.
-            if not hits:
-                del self._hits[key]
+            self._evict_idle_keys(cutoff)
 
             return RateLimitResult(allowed=True)
+
+    def _evict_idle_keys(self, cutoff: float) -> None:
+        """Drop keys whose every hit has aged out.
+
+        Without this `_hits` grows one entry per distinct client address and
+        never shrinks — a slow memory leak on an endpoint anyone can reach
+        unauthenticated, which is a denial-of-service vector rather than
+        untidiness.
+
+        Swept on write rather than on a timer: the dictionary only grows when
+        something is added, so that is exactly when it is worth checking. The
+        scan is bounded by the number of distinct callers in one window, and
+        only runs once the map is large enough to be worth walking.
+        """
+        if len(self._hits) < self._eviction_threshold:
+            return
+
+        stale = [
+            key for key, hits in self._hits.items() if not hits or hits[-1] <= cutoff
+        ]
+
+        for key in stale:
+            del self._hits[key]
 
     def reset(self, key: str) -> None:
         """Forget a key's history — used after a successful login."""

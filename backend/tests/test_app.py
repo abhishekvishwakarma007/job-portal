@@ -66,3 +66,39 @@ def test_cors_allow_list_rejects_unknown_origin(client: TestClient) -> None:
     response = client.get("/health", headers={"Origin": "https://evil.example.com"})
 
     assert "access-control-allow-origin" not in {key.lower() for key in response.headers}
+
+
+def test_api_responses_carry_security_headers(client: TestClient) -> None:
+    """The API origin is reachable directly, so it needs its own headers.
+
+    nginx sets these for the SPA it serves, but the README points a reviewer at
+    :8000 as well — and that origin previously had none of them while a comment
+    in nginx.conf claimed the API set its own.
+    """
+    headers = client.get("/health").headers
+
+    assert headers["x-content-type-options"] == "nosniff"
+    assert headers["x-frame-options"] == "DENY"
+    assert "content-security-policy" in headers
+
+
+def test_docs_are_exempt_from_the_restrictive_csp(client: TestClient) -> None:
+    """Swagger UI loads its assets from a CDN.
+
+    Applying default-src 'none' to /docs would serve a blank page, so the docs
+    routes are excluded deliberately rather than by oversight.
+    """
+    assert "content-security-policy" not in client.get("/docs").headers
+
+
+def test_cors_does_not_allow_credentials(client: TestClient) -> None:
+    """Nothing travels in a cookie, so nothing needs credentialed requests.
+
+    Enabling it would widen what a browser sends cross-origin in exchange for
+    nothing.
+    """
+    response = client.get("/health", headers={"Origin": "http://localhost:5173"})
+
+    assert "access-control-allow-credentials" not in {
+        key.lower() for key in response.headers
+    }

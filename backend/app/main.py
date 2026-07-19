@@ -6,7 +6,7 @@ an app against a controlled environment instead of whatever was set at import.
 
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.v1.router import api_router
@@ -25,17 +25,53 @@ CORS_ALLOWED_HEADERS = ["Authorization", "Content-Type"]
 def _configure_cors(app: FastAPI, settings: Settings) -> None:
     """Apply the CORS allow-list from config.
 
-    `allow_credentials` is on because refresh tokens travel in a cookie, which
-    is precisely why the origin list must stay explicit — the wildcard is
-    invalid alongside credentials and would silently break the SPA.
+    `allow_credentials` is off: both tokens travel in the Authorization header
+    and in the response body, never in a cookie, so nothing here needs
+    credentialed requests. Enabling it anyway would widen what a browser will
+    send cross-origin in exchange for nothing — and an earlier version of this
+    comment justified it with a cookie that does not exist.
+
+    The origin list stays explicit regardless.
     """
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=CORS_ALLOWED_METHODS,
         allow_headers=CORS_ALLOWED_HEADERS,
     )
+
+
+# Applied to every API response. nginx sets these for the SPA it serves, but
+# the API is reachable directly on its own port — the README even points at
+# :8000/docs — and that origin had none of them.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    # The API serves JSON, not documents, so nothing legitimate needs to be
+    # framed, scripted, or loaded from elsewhere.
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+}
+
+
+def _configure_security_headers(app: FastAPI) -> None:
+    """Add the response headers a browser acts on.
+
+    Excludes /docs and /redoc, whose Swagger UI legitimately loads scripts and
+    styles from a CDN — the restrictive CSP above would leave a blank page. The
+    interactive docs are disabled in production anyway.
+    """
+
+    @app.middleware("http")
+    async def add_security_headers(request: Request, call_next: Any) -> Response:
+        response: Response = await call_next(request)
+
+        if request.url.path not in {"/docs", "/redoc", "/openapi.json"}:
+            for header, value in SECURITY_HEADERS.items():
+                response.headers.setdefault(header, value)
+
+        return response
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -54,6 +90,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     _configure_cors(app, settings)
+    _configure_security_headers(app)
     app.include_router(api_router)
 
     @app.get(HEALTH_PATH, tags=["meta"], summary="Liveness probe")

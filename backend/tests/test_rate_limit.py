@@ -111,3 +111,50 @@ def test_uses_the_wall_clock_when_no_time_is_given() -> None:
     limiter = make_limiter()
 
     assert limiter.check("client").allowed is True
+
+
+def test_idle_keys_are_evicted() -> None:
+    """The map must not grow one entry per caller forever.
+
+    Unbounded growth on an endpoint anyone can reach unauthenticated is a
+    denial-of-service vector, not untidiness. An earlier version had a guard
+    for this that could never run — `hits.append` meant the deque was never
+    empty when it was checked — so the leak was real and the comment claimed
+    otherwise.
+    """
+    limiter = SlidingWindowRateLimiter(POLICY)
+    limiter._eviction_threshold = 3
+
+    for index in range(5):
+        limiter.check(f"caller-{index}", now=0.0)
+
+    # Every earlier hit has aged out by now; one fresh caller triggers a sweep.
+    limiter.check("recent", now=1_000.0)
+
+    assert len(limiter._hits) == 1
+    assert "recent" in limiter._hits
+
+
+def test_active_keys_survive_eviction() -> None:
+    """A sweep must not forget callers who are still inside their window."""
+    limiter = SlidingWindowRateLimiter(POLICY)
+    limiter._eviction_threshold = 2
+
+    limiter.check("old", now=0.0)
+    limiter.check("current", now=59.0)
+    # t=61 puts the cutoff at 1.0: "old" has aged out, "current" has not.
+    limiter.check("newest", now=61.0)
+
+    assert "old" not in limiter._hits
+    assert "current" in limiter._hits
+
+
+def test_eviction_does_not_reset_an_active_budget() -> None:
+    """Sweeping must not hand a rate-limited caller a fresh allowance."""
+    limiter = SlidingWindowRateLimiter(POLICY)
+    limiter._eviction_threshold = 1
+
+    for _ in range(POLICY.max_requests):
+        limiter.check("noisy", now=1.0)
+
+    assert limiter.check("noisy", now=2.0).allowed is False
