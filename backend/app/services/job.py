@@ -10,7 +10,7 @@ import uuid
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
-from app.models.job import Job
+from app.models.job import EmploymentType, Job
 from app.models.user import User, UserRole
 from app.schemas.job import JobCreate, JobUpdate
 
@@ -45,16 +45,31 @@ def list_jobs(
     *,
     viewer: User | None = None,
     search: str | None = None,
+    location: str | None = None,
+    employment_type: EmploymentType | None = None,
     limit: int,
     offset: int,
 ) -> tuple[list[Job], int]:
-    """Return one page of visible postings, newest first, plus the total."""
+    """Return one page of visible postings, newest first, plus the total.
+
+    Filters combine with AND, which is what someone narrowing a list expects:
+    each one they add should show fewer results, never more.
+    """
     statement = _visible_to(viewer)
 
     if search:
         # ilike rather than lower(...) like: the candidate typing "engineer"
         # should match "Backend Engineer" regardless of case.
         statement = statement.where(Job.title.ilike(f"%{search}%"))
+
+    if location:
+        # Substring, not equality: "berlin" should find "Berlin, Germany", and
+        # nobody types a location exactly as it was entered.
+        statement = statement.where(Job.location.ilike(f"%{location}%"))
+
+    if employment_type is not None:
+        # Exact — it is a closed enum, so a partial match would be meaningless.
+        statement = statement.where(Job.employment_type == employment_type)
 
     total = db.execute(
         select(func.count()).select_from(statement.subquery())

@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import HRUser, OptionalUser
 from app.db.session import get_db
+from app.models.job import EmploymentType
 from app.schemas.application import ApplicationPage, ApplicationRead
 from app.schemas.job import (
     DEFAULT_PAGE_SIZE,
@@ -58,16 +59,30 @@ def browse_jobs(
     db: Annotated[Session, Depends(get_db)],
     viewer: OptionalUser,
     search: Annotated[str | None, Query(max_length=200)] = None,
+    location: Annotated[str | None, Query(max_length=120)] = None,
+    employment_type: EmploymentType | None = None,
     limit: Limit = DEFAULT_PAGE_SIZE,
     offset: Offset = 0,
 ) -> JobPage:
-    """List published postings, newest first.
+    """List published postings, newest first, optionally filtered.
 
     Public: candidates need to see what is on offer before creating an account.
     An HR user calling this also sees their own drafts, which is why the caller
     is resolved optionally rather than required.
+
+    `search` matches the title, `location` matches the location, and both are
+    substring and case-insensitive. `employment_type` is exact, being a closed
+    enum. Filters combine with AND.
     """
-    jobs, total = list_jobs(db, viewer=viewer, search=search, limit=limit, offset=offset)
+    jobs, total = list_jobs(
+        db,
+        viewer=viewer,
+        search=search,
+        location=location,
+        employment_type=employment_type,
+        limit=limit,
+        offset=offset,
+    )
 
     return JobPage(
         items=[JobRead.model_validate(job) for job in jobs],
